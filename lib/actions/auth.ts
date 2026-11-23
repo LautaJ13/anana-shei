@@ -39,8 +39,21 @@ export async function registerAction(input: unknown, nextPath: string): Promise<
       query.query(`select consume_rate_limit('register-global', 40, interval '1 hour')`),
     );
     const id = await registerAccount(database, parsed.data);
+    if (!id) {
+      return {
+        ok: true,
+        notice: "Si el correo está libre, la cuenta quedó creada. Si ya la tenías, ingresá con tu clave.",
+      };
+    }
     await startSession(id);
   } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("email_taken")) {
+      return {
+        ok: true,
+        notice: "Si el correo está libre, la cuenta quedó creada. Si ya la tenías, ingresá con tu clave.",
+      };
+    }
     return { ok: false, error: mapDbError(error) };
   }
   redirect(safeNext(nextPath));

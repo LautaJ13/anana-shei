@@ -412,6 +412,9 @@ export async function staffBookAction(slug: string, input: unknown): Promise<For
   if (!user || !membership || !["org_admin", "receptionist"].includes(membership.role)) {
     return { ok: false, error: "No tenés permiso para hacer eso." };
   }
+  if (membership.organizationStatus !== "active") {
+    return { ok: false, error: "El consultorio todavía no está habilitado para reservar." };
+  }
   const database = await getDatabase();
   try {
     const patient = await database.withUser(user.id, (query) =>

@@ -19,6 +19,7 @@ type NotificationRow = {
   kind: string;
   status: EmailStatus;
   to_email: string;
+  organization_id: string | null;
   subject: string;
   payload: {
     startsAt?: string;
@@ -107,14 +108,32 @@ async function mark(database: AppDatabase, id: string, status: EmailStatus, erro
 export async function deliverNotification(database: AppDatabase, id: string): Promise<EmailStatus> {
   const rows = await database.withService((query) =>
     query.query<NotificationRow>(
-      `select id, kind, status, to_email, subject, payload from notification_events where id = $1::uuid`,
+      `select id, kind, status, to_email, organization_id, subject, payload from notification_events where id = $1::uuid`,
       [id],
     ),
   );
   const event = rows.rows[0];
   if (!event) return "failed";
   if (event.status !== "pending") return event.status;
-  const result = await sendEmail({ to: event.to_email, subject: event.subject, html: bookingHtml(event) });
+  const recipient = event.to_email.trim().toLowerCase();
+  if (
+    !recipient.includes("@") ||
+    recipient.endsWith("@patients.alba.invalid") ||
+    recipient.endsWith("@invalid.alba")
+  ) {
+    await mark(database, event.id, "failed", "not_deliverable");
+    return "failed";
+  }
+  if (event.organization_id) {
+    const org = await database.withService((query) =>
+      query.query<{ status: string }>(`select status from organizations where id = $1::uuid`, [event.organization_id]),
+    );
+    if (org.rows[0]?.status !== "active") {
+      await mark(database, event.id, "failed", "organization_not_active");
+      return "failed";
+    }
+  }
+  const result = await sendEmail({ to: recipient, subject: event.subject, html: bookingHtml(event) });
   if (result.ok) {
     await mark(database, id, "sent", null);
     return "sent";

@@ -196,6 +196,23 @@ test("reservas, concurrencia, aislamiento y zona horaria", async () => {
     );
     assert.match(shell.rows[0]?.email ?? "", /@patients\.alba\.invalid$/);
     assert.equal(shell.rows[0]?.contact_email, "nueva.paciente@example.com");
+    const duplicate = await registerAccount(db, {
+      email: "nueva.paciente@example.com",
+      password: "otra-clave-22",
+      fullName: "Otra Persona",
+    });
+    assert.equal(duplicate, null);
+    const stillOwner = await authenticate(db, {
+      email: "nueva.paciente@example.com",
+      password: "clave-segura-1",
+    });
+    assert.equal(stillOwner.id, created);
+    const claimed = await registerAccount(db, {
+      email: "telefono.nuevo@example.com",
+      password: "clave-segura-1",
+      fullName: "Teléfono Real",
+    });
+    assert.ok(claimed);
     const pending = await db.withUser(created, (query) =>
       query.query<{ create_organization: string }>(
         `select create_organization($1, $2, $3, $4, $5, $6, $7, $8) as create_organization`,
@@ -233,6 +250,40 @@ test("reservas, concurrencia, aislamiento y zona horaria", async () => {
     );
     const newPatient = fresh.rows[0]?.find_or_create_patient;
     assert.ok(newPatient);
+    assert.notEqual(newPatient, claimed);
+    const orgId = pending.rows[0]?.create_organization;
+    const location = await db.withUser(created, (query) =>
+      query.query<{ id: string }>(`select id from clinic_locations where organization_id = $1::uuid limit 1`, [orgId]),
+    );
+    const professional = await db.withUser(created, (query) =>
+      query.query<{ id: string }>(
+        `insert into professionals (organization_id, full_name) values ($1::uuid, 'Dra Nueva') returning id`,
+        [orgId],
+      ),
+    );
+    const service = await db.withUser(created, (query) =>
+      query.query<{ id: string }>(
+        `insert into services (organization_id, name, duration_minutes, buffer_minutes)
+         values ($1::uuid, 'Consulta', 30, 0) returning id`,
+        [orgId],
+      ),
+    );
+    await db.withUser(created, (query) =>
+      query.query(`insert into professional_services (professional_id, service_id) values ($1::uuid, $2::uuid)`, [
+        professional.rows[0]?.id,
+        service.rows[0]?.id,
+      ]),
+    );
+    await assert.rejects(
+      () =>
+        db.withUser(created, (query) =>
+          query.query(
+            `select appointment_id from book_appointment($1::uuid, $2::uuid, $3::uuid, now() + interval '10 days', $4::uuid, 'staff', null)`,
+            [professional.rows[0]?.id, service.rows[0]?.id, location.rows[0]?.id, created],
+          ),
+        ),
+      /not_available/,
+    );
     const place = await db.withService((query) =>
       query.query<{ professional_id: string; location_id: string; service_id: string }>(
         `select p.id as professional_id, l.id as location_id, s.id as service_id

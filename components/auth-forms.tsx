@@ -50,6 +50,7 @@ export function RegisterForm({ nextPath }: { nextPath: string }) {
     defaultValues: { fullName: "", email: "", phone: "", password: "", companyFax: "" },
   });
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   return (
@@ -58,8 +59,10 @@ export function RegisterForm({ nextPath }: { nextPath: string }) {
       onSubmit={form.handleSubmit(async (values) => {
         setPending(true);
         setError(null);
+        setMessage(null);
         const result = await registerAction(values, nextPath);
         if (result && !result.ok) setError(result.error);
+        if (result?.ok && result.notice) setMessage(result.notice);
         setPending(false);
       })}
       noValidate
@@ -78,6 +81,7 @@ export function RegisterForm({ nextPath }: { nextPath: string }) {
       </Field>
       <Honeypot register={form.register("companyFax")} />
       {error ? <p className="text-sm text-danger" role="alert">{error}</p> : null}
+      {message ? <p className="text-sm text-navy" role="status">{message}</p> : null}
       <Button className="w-full" type="submit" disabled={pending}>
         {pending ? "Creando cuenta…" : "Crear cuenta"}
       </Button>

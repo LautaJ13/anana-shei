@@ -884,6 +884,15 @@ declare
   v_id uuid;
 begin
   perform set_config('app.internal', 'on', true);
+  if exists (
+    select 1
+    from appointments a
+    join organizations o on o.id = a.organization_id
+    where a.id = p_appointment
+      and o.status <> 'active'
+  ) then
+    return null;
+  end if;
   insert into notification_events (
     appointment_id, user_id, organization_id, kind, status, to_email, subject, payload
   )
@@ -893,7 +902,11 @@ begin
     a.organization_id,
     p_kind,
     'pending',
-    p.email,
+    case
+      when p.email ~ '^staff-[0-9a-f]+@patients\.alba\.invalid$' and nullif(trim(p.contact_email), '') is not null
+        then lower(trim(p.contact_email))
+      else p.email
+    end,
     p_subject,
     jsonb_build_object(
       'startsAt', a.starts_at,
@@ -959,7 +972,7 @@ begin
     raise exception 'not_available';
   end if;
   select * into v_org from organizations where id = v_prof.organization_id;
-  if v_org.status = 'suspended' or (v_org.status <> 'active' and p_source = 'online') then
+  if v_org.status <> 'active' then
     raise exception 'not_available';
   end if;
   select * into v_service
@@ -992,6 +1005,8 @@ begin
 
   if p_source = 'online' then
     perform consume_rate_limit('book:' || v_user::text, 8, interval '1 hour');
+  else
+    perform consume_rate_limit('staff-book:' || v_org.id::text, 40, interval '1 hour');
   end if;
 
   perform pg_advisory_xact_lock(hashtextextended(p_professional_id::text, 0));
@@ -1309,7 +1324,7 @@ begin
   return v_id;
 exception
   when unique_violation then
-    raise exception 'email_taken';
+    return null;
 end;
 $$;
 

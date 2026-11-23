@@ -38,14 +38,14 @@ const demoLoginsDisabled = () => process.env.DISABLE_DEMO_LOGINS !== "false";
 export async function registerAccount(
   database: AppDatabase,
   input: { email: string; password: string; fullName: string; phone?: string | null },
-): Promise<string> {
+): Promise<string | null> {
   const passwordHash = await hashPassword(input.password);
   return database.withService(async (db) => {
-    const rows = await db.query<{ register_user: string }>(
+    const rows = await db.query<{ register_user: string | null }>(
       `select register_user($1, $2, $3, $4) as register_user`,
       [input.email, passwordHash, input.fullName, input.phone ?? null],
     );
-    return rows.rows[0].register_user;
+    return rows.rows[0]?.register_user ?? null;
   });
 }
 
