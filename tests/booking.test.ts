@@ -173,6 +173,68 @@ test("reservas, concurrencia, aislamiento y zona horaria", async () => {
     assert.equal(role.rows[0]?.platform_role, "user");
     const loggedIn = await authenticate(db, { email: "nueva.paciente@example.com", password: "clave-segura-1", ip: "test-2" });
     assert.equal(loggedIn.id, created);
+
+    await assert.rejects(
+      () =>
+        db.withUser(martin, (query) =>
+          query.query(`select find_or_create_patient($1::uuid, $2, $3, $4)`, [
+            PRADO,
+            "nueva.paciente@example.com",
+            "Nombre Inventado",
+            "099000000",
+          ]),
+        ),
+      /patient_outside_clinic/,
+    );
+    const fresh = await db.withUser(martin, (query) =>
+      query.query<{ find_or_create_patient: string }>(
+        `select find_or_create_patient($1::uuid, $2, $3, $4) as find_or_create_patient`,
+        [PRADO, "telefono.nuevo@example.com", "Teléfono Nuevo", "099111222"],
+      ),
+    );
+    const newPatient = fresh.rows[0]?.find_or_create_patient;
+    assert.ok(newPatient);
+    const place = await db.withService((query) =>
+      query.query<{ professional_id: string; location_id: string; service_id: string }>(
+        `select p.id as professional_id, l.id as location_id, s.id as service_id
+         from professionals p
+         join clinic_locations l on l.organization_id = p.organization_id
+         join services s on s.organization_id = p.organization_id
+         where p.organization_id = $1::uuid
+         limit 1`,
+        [PRADO],
+      ),
+    );
+    const spot = place.rows[0];
+    assert.ok(spot);
+    await assert.rejects(
+      () =>
+        db.withService((query) =>
+          query.query(
+            `insert into appointments (
+               organization_id, location_id, professional_id, patient_id, service_id,
+               starts_at, ends_at, buffer_minutes, status, source
+             ) values (
+               $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+               now() + interval '500 days', now() + interval '500 days 30 minutes', 0, 'confirmed', 'staff'
+             )`,
+            [PRADO, spot.location_id, spot.professional_id, created, spot.service_id],
+          ),
+        ),
+      /patient_outside_clinic/,
+    );
+    await db.withService((query) =>
+      query.query(
+        `insert into appointments (
+           organization_id, location_id, professional_id, patient_id, service_id,
+           starts_at, ends_at, buffer_minutes, status, source
+         ) values (
+           $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+           now() + interval '501 days', now() + interval '501 days 30 minutes', 0, 'confirmed', 'staff'
+         )`,
+        [PRADO, spot.location_id, spot.professional_id, newPatient, spot.service_id],
+      ),
+    );
   } finally {
     await db.close();
   }

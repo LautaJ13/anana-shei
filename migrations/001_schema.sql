@@ -671,6 +671,40 @@ $$;
 create trigger appointments_no_overlap before insert or update on appointments
 for each row execute function appointments_prevent_overlap();
 
+create function appointments_guard_staff_patient() returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform set_config('app.internal', 'on', true);
+  if current_setting('app.seed', true) = 'on' or new.source <> 'staff' then
+    return new;
+  end if;
+  if exists (
+    select 1 from appointments a
+    where a.patient_id = new.patient_id
+      and a.organization_id = new.organization_id
+  ) then
+    return new;
+  end if;
+  if exists (
+    select 1 from profiles p
+    where p.id = new.patient_id
+      and p.password_hash = '!'
+      and p.deleted_at is null
+      and not exists (select 1 from appointments other where other.patient_id = p.id)
+  ) then
+    return new;
+  end if;
+  raise exception 'patient_outside_clinic';
+end;
+$$;
+
+create trigger appointments_guard_staff_patient
+before insert or update on appointments
+for each row execute function appointments_guard_staff_patient();
+
 create function consume_rate_limit(p_key text, p_limit integer, p_window interval) returns void
 language plpgsql
 security definer
@@ -1279,7 +1313,14 @@ begin
   perform consume_rate_limit('patient-lookup:' || current_app_user()::text, 30, interval '1 hour');
   select id into v_id from profiles where lower(email) = v_email and deleted_at is null;
   if found then
-    return v_id;
+    -- No devolvemos una cuenta de otra clínica: eso mostraría nombre, teléfono y fecha de nacimiento.
+    if exists (
+      select 1 from appointments a
+      where a.patient_id = v_id and a.organization_id = p_organization_id
+    ) then
+      return v_id;
+    end if;
+    raise exception 'patient_outside_clinic';
   end if;
   insert into profiles (email, password_hash, full_name, phone, platform_role, status)
   values (v_email, '!', trim(p_full_name), nullif(trim(coalesce(p_phone, '')), ''), 'user', 'active')
@@ -2046,5 +2087,6 @@ revoke all on function protect_profile() from public;
 revoke all on function protect_professional() from public;
 revoke all on function protect_last_admin() from public;
 revoke all on function appointments_prevent_overlap() from public;
+revoke all on function appointments_guard_staff_patient() from public;
 revoke all on function appointments_same_org() from public;
 revoke all on function invitation_same_org() from public;

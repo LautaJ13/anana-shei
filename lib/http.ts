@@ -1,24 +1,30 @@
-import { headers } from "next/headers";
+import { randomBytes } from "node:crypto";
+import { cookies } from "next/headers";
+import { configuredOrigin, safeNext } from "./http-policy";
+
+export { safeNext };
+
+const RATE_COOKIE = "alba_rl";
 
 export async function clientIp(): Promise<string> {
-  const headerList = await headers();
-  const forwarded = headerList.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwarded || headerList.get("x-real-ip") || "local";
+  // No usamos X-Forwarded-For ni X-Real-IP: quien llama puede inventarlos
+  // y gastar el cupo de otra persona. La clave la emite el servidor.
+  const jar = await cookies();
+  const existing = jar.get(RATE_COOKIE)?.value ?? "";
+  if (/^[a-f0-9]{32}$/.test(existing)) return existing;
+  const created = randomBytes(16).toString("hex");
+  jar.set(RATE_COOKIE, created, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
+  return created;
 }
 
-export async function appOrigin(): Promise<string> {
-  if (process.env.APP_ORIGIN?.trim()) return process.env.APP_ORIGIN.trim().replace(/\/$/, "");
-  const headerList = await headers();
-  const host = headerList.get("x-forwarded-host") ?? headerList.get("host") ?? "localhost:3847";
-  const proto = headerList.get("x-forwarded-proto") ?? "http";
-  return `${proto}://${host}`;
-}
-
-export function safeNext(value: string | undefined | null, fallback = "/cuenta"): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\") || value.includes("\n")) {
-    return fallback;
-  }
-  return value;
+export async function appOrigin(): Promise<string | null> {
+  return configuredOrigin();
 }
 
 export function one(value: string | string[] | undefined): string {

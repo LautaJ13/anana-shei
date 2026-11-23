@@ -16,6 +16,7 @@ const MESSAGES: Record<string, string> = {
   invalid_transition: "Esa acción no corresponde al estado actual de la consulta.",
   last_admin: "Tiene que quedar al menos una administración activa.",
   cross_organization: "Esa combinación no pertenece al mismo consultorio.",
+  patient_outside_clinic: "Esa persona tiene que pedir el turno por su cuenta. Desde el consultorio no podemos usar su cuenta.",
   demo_disabled: "Las cuentas de demostración están desactivadas.",
 };
 

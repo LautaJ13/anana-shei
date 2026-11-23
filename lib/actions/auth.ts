@@ -67,11 +67,15 @@ export async function requestResetAction(input: unknown): Promise<AuthState> {
       notice: "El correo no está configurado. No se envió un email y no se generó un enlace de recuperación.",
     };
   }
+  const origin = await appOrigin();
+  if (!origin) {
+    return { ok: true, notice: "No se generó un enlace de recuperación." };
+  }
   const token = await issuePasswordReset(database, parsed.data.email);
   if (!token) {
     return { ok: true, notice: "Si existe una cuenta con ese correo, enviamos las instrucciones." };
   }
-  const link = `${await appOrigin()}/restablecer?token=${encodeURIComponent(token)}`;
+  const link = `${origin}/restablecer?token=${encodeURIComponent(token)}`;
   const status = await deliverPasswordReset(database, parsed.data.email, link);
   if (status === "sent") {
     return { ok: true, notice: "Si existe una cuenta con ese correo, enviamos las instrucciones." };

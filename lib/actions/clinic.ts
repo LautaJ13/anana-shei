@@ -353,7 +353,8 @@ export async function inviteAction(slug: string, input: unknown): Promise<FormSt
   } catch (error) {
     return { ok: false, error: mapDbError(error) };
   }
-  const link = `${await appOrigin()}/invitacion/${token}`;
+  const origin = await appOrigin();
+  const link = origin ? `${origin}/invitacion/${token}` : `/invitacion/${token}`;
   return {
     ok: true,
     link,
