@@ -9,7 +9,7 @@ import { appOrigin, clientIp, safeNext } from "@/lib/http";
 import { endSession, startSession } from "@/lib/session";
 import { loginSchema, registerSchema, resetPasswordSchema, resetRequestSchema } from "@/lib/validators";
 
-export type AuthState = { ok: true; devLink?: string | null; notice?: string } | { ok: false; error: string };
+export type AuthState = { ok: true; notice?: string } | { ok: false; error: string };
 
 export async function loginAction(input: unknown, nextPath: string): Promise<AuthState> {
   const parsed = loginSchema.safeParse(input);
@@ -61,28 +61,22 @@ export async function requestResetAction(input: unknown): Promise<AuthState> {
   } catch (error) {
     return { ok: false, error: mapDbError(error) };
   }
-  const token = await issuePasswordReset(database, parsed.data.email);
-  const origin = await appOrigin();
-  const link = token ? `${origin}/restablecer?token=${encodeURIComponent(token)}` : null;
   if (!isEmailConfigured()) {
-    const status = token ? await deliverPasswordReset(database, parsed.data.email, null) : "skipped_unconfigured";
     return {
       ok: true,
-      devLink: link,
-      notice:
-        status === "skipped_unconfigured"
-          ? "El proveedor de correo no está configurado. No se envió un email. Si la cuenta existe, el enlace de un solo uso aparece abajo."
-          : "Si existe una cuenta con ese correo, preparamos la recuperación.",
+      notice: "El correo no está configurado. No se envió un email y no se generó un enlace de recuperación.",
     };
   }
+  const token = await issuePasswordReset(database, parsed.data.email);
   if (!token) {
-    return { ok: true, devLink: null, notice: "Si existe una cuenta con ese correo, enviamos las instrucciones." };
+    return { ok: true, notice: "Si existe una cuenta con ese correo, enviamos las instrucciones." };
   }
+  const link = `${await appOrigin()}/restablecer?token=${encodeURIComponent(token)}`;
   const status = await deliverPasswordReset(database, parsed.data.email, link);
   if (status === "sent") {
-    return { ok: true, devLink: null, notice: "Si existe una cuenta con ese correo, enviamos las instrucciones." };
+    return { ok: true, notice: "Si existe una cuenta con ese correo, enviamos las instrucciones." };
   }
-  return { ok: true, devLink: null, notice: "No pudimos enviar el correo. La recuperación no se completó." };
+  return { ok: true, notice: "No pudimos enviar el correo. La recuperación no se completó." };
 }
 
 export async function resetPasswordAction(input: unknown): Promise<AuthState> {

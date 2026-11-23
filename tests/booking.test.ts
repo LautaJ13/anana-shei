@@ -4,11 +4,9 @@ import { authenticate, registerAccount } from "../lib/auth.ts";
 import { bookAppointment, cancelAppointment, rescheduleAppointment } from "../lib/booking.ts";
 import { createMemoryDatabase, type AppDatabase } from "../lib/db.ts";
 import { errorText } from "../lib/errors.ts";
-import { verifyPassword } from "../lib/password.ts";
 import { scheduleForDates } from "../lib/schedule.ts";
 import { formatTime } from "../lib/time.ts";
 
-const DEMO_PASSWORD = "Alba-Demo-2026";
 const SOFIA = "30000000-0000-4000-8000-000000000004";
 const SERVICE = "40000000-0000-4000-8000-000000000004";
 const POCITOS = "11000000-0000-4000-8000-000000000002";
@@ -34,16 +32,10 @@ test("reservas, concurrencia, aislamiento y zona horaria", async () => {
     const sofia = await userId(db, "sofia.pereira@demo.alba.uy");
     const platform = await userId(db, "plataforma@demo.alba.uy");
 
-    const stored = await db.withService((query) =>
-      query.query<{ password_hash: string }>("select password_hash from profiles where id = $1", [camila]),
+    await assert.rejects(
+      () => authenticate(db, { email: "camila.rodriguez@demo.alba.uy", password: "clave-que-no-existe", ip: "test" }),
+      /invalid_credentials|demo_disabled/,
     );
-    assert.equal(await verifyPassword(DEMO_PASSWORD, stored.rows[0].password_hash), true);
-    const session = await authenticate(db, {
-      email: "camila.rodriguez@demo.alba.uy",
-      password: DEMO_PASSWORD,
-      ip: "test",
-    });
-    assert.equal(session.fullName, "Camila Rodríguez");
 
     const seeded = await db.withService((query) =>
       query.query<{ starts_at: Date | string }>(

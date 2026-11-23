@@ -1,5 +1,4 @@
--- Datos ficticios de demostración. La contraseña de estas cuentas es pública
--- y solo sirve para probar el producto: Alba-Demo-2026
+-- Datos ficticios. Estas cuentas no tienen contraseña usable.
 select set_config('app.seed', 'on', true);
 
 insert into specialties (id, name, slug, description) values
@@ -109,7 +108,7 @@ insert into profiles (
   (
     '20000000-0000-4000-8000-000000000001',
     'camila.rodriguez@demo.alba.uy',
-    'scrypt$16384$8$1$X-bvD3w2IzVIqV6l0a4f2w$nHVALCU-fMLvtq0N4ipR0YgvLMSJANH2OC_GiKlO90E',
+    'disabled',
     'Camila Rodríguez',
     '+598 99 000 101',
     'user',
@@ -118,7 +117,7 @@ insert into profiles (
   (
     '20000000-0000-4000-8000-000000000002',
     'martin.pereyra@demo.alba.uy',
-    'scrypt$16384$8$1$X-bvD3w2IzVIqV6l0a4f2w$nHVALCU-fMLvtq0N4ipR0YgvLMSJANH2OC_GiKlO90E',
+    'disabled',
     'Martín Pereyra',
     '+598 99 000 102',
     'user',
@@ -127,7 +126,7 @@ insert into profiles (
   (
     '20000000-0000-4000-8000-000000000003',
     'ana.ferreira@demo.alba.uy',
-    'scrypt$16384$8$1$X-bvD3w2IzVIqV6l0a4f2w$nHVALCU-fMLvtq0N4ipR0YgvLMSJANH2OC_GiKlO90E',
+    'disabled',
     'Ana Ferreira',
     '+598 99 000 103',
     'user',
@@ -136,7 +135,7 @@ insert into profiles (
   (
     '20000000-0000-4000-8000-000000000004',
     'julia.nunez@demo.alba.uy',
-    'scrypt$16384$8$1$X-bvD3w2IzVIqV6l0a4f2w$nHVALCU-fMLvtq0N4ipR0YgvLMSJANH2OC_GiKlO90E',
+    'disabled',
     'Julia Núñez',
     '+598 99 000 104',
     'user',
@@ -145,7 +144,7 @@ insert into profiles (
   (
     '20000000-0000-4000-8000-000000000005',
     'elena.rios@demo.alba.uy',
-    'scrypt$16384$8$1$X-bvD3w2IzVIqV6l0a4f2w$nHVALCU-fMLvtq0N4ipR0YgvLMSJANH2OC_GiKlO90E',
+    'disabled',
     'Elena Ríos',
     '+598 99 000 105',
     'user',
@@ -154,7 +153,7 @@ insert into profiles (
   (
     '20000000-0000-4000-8000-000000000006',
     'sofia.pereira@demo.alba.uy',
-    'scrypt$16384$8$1$X-bvD3w2IzVIqV6l0a4f2w$nHVALCU-fMLvtq0N4ipR0YgvLMSJANH2OC_GiKlO90E',
+    'disabled',
     'Sofía Pereira',
     '+598 99 000 106',
     'user',
@@ -163,7 +162,7 @@ insert into profiles (
   (
     '20000000-0000-4000-8000-000000000007',
     'diego.alvarez@demo.alba.uy',
-    'scrypt$16384$8$1$X-bvD3w2IzVIqV6l0a4f2w$nHVALCU-fMLvtq0N4ipR0YgvLMSJANH2OC_GiKlO90E',
+    'disabled',
     'Diego Álvarez',
     '+598 99 000 107',
     'user',
@@ -172,7 +171,7 @@ insert into profiles (
   (
     '20000000-0000-4000-8000-000000000008',
     'andres.vidal@demo.alba.uy',
-    'scrypt$16384$8$1$X-bvD3w2IzVIqV6l0a4f2w$nHVALCU-fMLvtq0N4ipR0YgvLMSJANH2OC_GiKlO90E',
+    'disabled',
     'Andrés Vidal',
     '+598 99 000 108',
     'user',
@@ -181,7 +180,7 @@ insert into profiles (
   (
     '20000000-0000-4000-8000-000000000009',
     'valentina.sosa@demo.alba.uy',
-    'scrypt$16384$8$1$X-bvD3w2IzVIqV6l0a4f2w$nHVALCU-fMLvtq0N4ipR0YgvLMSJANH2OC_GiKlO90E',
+    'disabled',
     'Valentina Sosa',
     '+598 99 000 109',
     'user',
@@ -190,7 +189,7 @@ insert into profiles (
   (
     '20000000-0000-4000-8000-00000000000a',
     'lucas.silva@demo.alba.uy',
-    'scrypt$16384$8$1$X-bvD3w2IzVIqV6l0a4f2w$nHVALCU-fMLvtq0N4ipR0YgvLMSJANH2OC_GiKlO90E',
+    'disabled',
     'Lucas Silva',
     '+598 99 000 110',
     'user',
@@ -199,7 +198,7 @@ insert into profiles (
   (
     '20000000-0000-4000-8000-00000000000b',
     'plataforma@demo.alba.uy',
-    'scrypt$16384$8$1$X-bvD3w2IzVIqV6l0a4f2w$nHVALCU-fMLvtq0N4ipR0YgvLMSJANH2OC_GiKlO90E',
+    'disabled',
     'Equipo Alba',
     null,
     'superadmin',

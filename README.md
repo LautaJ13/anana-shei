@@ -17,24 +17,9 @@ Sin `DATABASE_URL`, Alba abre PostgreSQL en memoria con [PGlite](https://pglite.
 
 Copiá `.env.example` a `.env.local` solo si vas a configurar correo o una base externa. No commitees secretos.
 
-## Cuentas de demostración
+## Datos de ejemplo
 
-La contraseña de todas es `Alba-Demo-2026`.
-
-| Uso | Correo |
-| --- | --- |
-| Paciente | camila.rodriguez@demo.alba.uy |
-| Administración, Clínica del Prado | martin.pereyra@demo.alba.uy |
-| Profesional sin editar su agenda | ana.ferreira@demo.alba.uy |
-| Recepción, Clínica del Prado | julia.nunez@demo.alba.uy |
-| Administración, Mente Clara | elena.rios@demo.alba.uy |
-| Profesional con dos sedes | sofia.pereira@demo.alba.uy |
-| Administración, Sonrisa Viva | andres.vidal@demo.alba.uy |
-| Plataforma | plataforma@demo.alba.uy |
-
-También existe `lucas.silva@demo.alba.uy`, otro paciente, para comprobar que las reservas no se cruzan. `DISABLE_DEMO_LOGINS=true` bloquea estas cuentas.
-
-Hay tres consultorios activos: Clínica del Prado (medicina), Mente Clara (psicología) y Sonrisa Viva (odontología).
+Hay tres consultorios activos: Clínica del Prado (medicina), Mente Clara (psicología) y Sonrisa Viva (odontología). Se pueden ver sin cuenta. Las fichas de ejemplo no tienen contraseña: para reservar hay que crear una cuenta. Las cuentas marcadas como demostración quedan bloqueadas salvo que `DISABLE_DEMO_LOGINS` sea `false`.
 
 ## Correo y recordatorios
 

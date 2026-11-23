@@ -33,7 +33,7 @@ type ProfileRow = {
   password_hash?: string;
 };
 
-const demoLoginsDisabled = () => process.env.DISABLE_DEMO_LOGINS === "true";
+const demoLoginsDisabled = () => process.env.DISABLE_DEMO_LOGINS !== "false";
 
 export async function registerAccount(
   database: AppDatabase,

@@ -88,7 +88,6 @@ export function RegisterForm({ nextPath }: { nextPath: string }) {
 export function ResetRequestForm() {
   const form = useForm({ resolver: zodResolver(resetRequestSchema), defaultValues: { email: "", companyFax: "" } });
   const [message, setMessage] = useState<string | null>(null);
-  const [link, setLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -105,7 +104,6 @@ export function ResetRequestForm() {
           return;
         }
         setMessage(result.notice ?? "Listo.");
-        setLink(result.devLink ?? null);
       })}
       noValidate
     >
@@ -115,13 +113,6 @@ export function ResetRequestForm() {
       <Honeypot register={form.register("companyFax")} />
       {error ? <p className="text-sm text-danger" role="alert">{error}</p> : null}
       {message ? <p className="text-sm text-navy" role="status">{message}</p> : null}
-      {link ? (
-        <p className="rounded-xl bg-background p-3 text-sm break-all">
-          <a className="font-semibold text-navy underline" href={link}>
-            Abrir enlace de recuperación
-          </a>
-        </p>
-      ) : null}
       <Button className="w-full" type="submit" disabled={pending}>
         {pending ? "Preparando…" : "Recuperar acceso"}
       </Button>

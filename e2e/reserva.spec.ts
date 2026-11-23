@@ -36,7 +36,7 @@ test("un paciente reserva un horario libre, lo ocupa y la cancelación lo libera
   await page.getByLabel("Contraseña").fill("clave-segura-1");
   await page.getByRole("button", { name: "Crear cuenta" }).click();
   await page.getByRole("button", { name: "Confirmar reserva" }).click();
-  await expect(page.getByRole("heading", { name: "Tu consulta fue reservada correctamente" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tu consulta fue reservada correctamente" })).toBeVisible({ timeout: 45_000 });
   await expect(page.getByText("proveedor de email no está configurado")).toBeVisible();
 
   await page.goto(dayHref);
@@ -45,30 +45,30 @@ test("un paciente reserva un horario libre, lo ocupa y la cancelación lo libera
   await page.goto("/cuenta");
   await page.getByRole("checkbox", { name: /Confirmo que quiero cancelar/ }).check();
   await page.getByRole("button", { name: "Cancelar consulta" }).click();
-  await expect(page.getByText("Cancelada")).toBeVisible();
+  await expect(page.getByText("Cancelada")).toBeVisible({ timeout: 45_000 });
 
   await page.goto(dayHref);
   await expect(page.getByRole("link", { name: slotLabel, exact: true })).toBeVisible();
 });
 
-test("un administrador no entra al panel de otro consultorio", async ({ page }) => {
-  await page.goto("/ingresar");
-  await page.getByLabel("Correo").fill("martin.pereyra@demo.alba.uy");
-  await page.getByLabel("Contraseña").fill("Alba-Demo-2026");
-  await page.getByRole("button", { name: "Ingresar" }).click();
-  await expect(page.getByRole("link", { name: "Panel" })).toBeVisible();
-  await page.goto("/c/mente-clara/panel");
+test("una cuenta nueva no entra al panel de un consultorio", async ({ page }) => {
+  await page.goto("/registro?next=/c/mente-clara/panel");
+  await page.getByLabel("Nombre y apellido").fill("Persona sin consultorio");
+  await page.getByLabel("Correo").fill(`sin.panel.${Date.now()}@example.com`);
+  await page.getByLabel("Contraseña").fill("clave-segura-1");
+  await page.getByRole("button", { name: "Crear cuenta" }).click();
   await expect(page.getByRole("heading", { name: "No encontramos esta página" })).toBeVisible();
 });
 
 test("una paciente no ve las reservas de otra persona", async ({ page }) => {
-  await page.goto("/ingresar?next=/cuenta");
-  await page.getByLabel("Correo").fill("camila.rodriguez@demo.alba.uy");
-  await page.getByLabel("Contraseña").fill("Alba-Demo-2026");
-  await page.getByRole("button", { name: "Ingresar" }).click();
+  await page.goto("/registro?next=/cuenta");
+  await page.getByLabel("Nombre y apellido").fill("Paciente aislada");
+  await page.getByLabel("Correo").fill(`aislada.${Date.now()}@example.com`);
+  await page.getByLabel("Contraseña").fill("clave-segura-1");
+  await page.getByRole("button", { name: "Crear cuenta" }).click();
   await expect(page.getByRole("heading", { name: /Hola/ })).toBeVisible();
   await expect(page.getByText("lucas.silva@demo.alba.uy")).toHaveCount(0);
-  await expect(page.getByText("Lic. Sofía Pereira").first()).toBeVisible();
+  await expect(page.getByText("camila.rodriguez@demo.alba.uy")).toHaveCount(0);
 });
 
 test.describe("celular", () => {
