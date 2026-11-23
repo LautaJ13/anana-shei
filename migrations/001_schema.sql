@@ -1,11 +1,11 @@
 -- Alba: esquema multi-consultorio.
 -- Las políticas RLS se aplican a app_rls. El superusuario las saltea;
 -- la aplicación hace SET LOCAL ROLE app_rls en cada transacción de usuario.
+-- El rol se crea fuera de esta transacción: CREATE ROLE no puede depender
+-- de que el archivo entero corra dentro de BEGIN/COMMIT.
 -- Los turnos simultáneos se serializan con un advisory lock por profesional
 -- y un disparador SECURITY DEFINER. btree_gist no se usa para que el mismo
 -- SQL corra en Postgres y en PGlite.
-
-create role app_rls nologin nosuperuser nobypassrls;
 
 grant usage on schema public to app_rls;
 
@@ -302,6 +302,75 @@ create table rate_limits (
   primary key (bucket_key, window_start)
 );
 
+-- Copias sin RLS para que las políticas puedan mirar rol y membresía
+-- sin consultarse a sí mismas. El dueño publicado no puede saltear RLS.
+create table profile_access_cache (
+  user_id uuid primary key references profiles (id) on delete cascade,
+  platform_role text not null,
+  status text not null,
+  deleted_at timestamptz
+);
+
+create table member_access_cache (
+  organization_id uuid not null,
+  user_id uuid not null references profiles (id) on delete cascade,
+  role text not null,
+  professional_id uuid,
+  status text not null,
+  primary key (organization_id, user_id)
+);
+
+create function sync_profile_access_cache() returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if tg_op = 'DELETE' then
+    delete from profile_access_cache where user_id = old.id;
+    return old;
+  end if;
+  insert into profile_access_cache (user_id, platform_role, status, deleted_at)
+  values (new.id, new.platform_role, new.status, new.deleted_at)
+  on conflict (user_id) do update
+    set platform_role = excluded.platform_role,
+        status = excluded.status,
+        deleted_at = excluded.deleted_at;
+  return new;
+end;
+$$;
+
+create trigger profiles_access_cache
+after insert or update or delete on profiles
+for each row execute function sync_profile_access_cache();
+
+create function sync_member_access_cache() returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if tg_op = 'DELETE' then
+    delete from member_access_cache
+    where organization_id = old.organization_id and user_id = old.user_id;
+    return old;
+  end if;
+  if tg_op = 'UPDATE' and (new.organization_id <> old.organization_id or new.user_id <> old.user_id) then
+    delete from member_access_cache
+    where organization_id = old.organization_id and user_id = old.user_id;
+  end if;
+  insert into member_access_cache (organization_id, user_id, role, professional_id, status)
+  values (new.organization_id, new.user_id, new.role, new.professional_id, new.status)
+  on conflict (organization_id, user_id) do update
+    set role = excluded.role,
+        professional_id = excluded.professional_id,
+        status = excluded.status;
+  return new;
+end;
+$$;
+
+create trigger members_access_cache
+after insert or update or delete on organization_members
+for each row execute function sync_member_access_cache();
+
 create function current_platform_role() returns text
 language sql
 stable
@@ -310,11 +379,11 @@ set search_path = public
 as $$
   select coalesce(
     (
-      select p.platform_role
-      from profiles p
-      where p.id = current_app_user()
-        and p.status = 'active'
-        and p.deleted_at is null
+      select c.platform_role
+      from profile_access_cache c
+      where c.user_id = current_app_user()
+        and c.status = 'active'
+        and c.deleted_at is null
     ),
     ''
   )
@@ -327,7 +396,7 @@ security definer
 set search_path = public
 as $$
   select m.role
-  from organization_members m
+  from member_access_cache m
   where m.organization_id = p_org
     and m.user_id = current_app_user()
     and m.status = 'active'
@@ -611,6 +680,7 @@ declare
   v_window timestamptz;
   v_hits integer;
 begin
+  perform set_config('app.internal', 'on', true);
   v_window := to_timestamp(
     floor(extract(epoch from now()) / extract(epoch from p_window)) * extract(epoch from p_window)
   );
@@ -646,6 +716,7 @@ declare
   v_minute integer;
   v_aligned boolean;
 begin
+  perform set_config('app.internal', 'on', true);
   if p_starts_at <= now() or p_starts_at > now() + interval '60 days' then
     raise exception 'slot_unavailable';
   end if;
@@ -749,6 +820,7 @@ as $$
 declare
   v_id uuid;
 begin
+  perform set_config('app.internal', 'on', true);
   insert into notification_events (
     appointment_id, user_id, organization_id, kind, status, to_email, subject, payload
   )
@@ -811,6 +883,7 @@ declare
   v_note text;
   v_notification uuid;
 begin
+  perform set_config('app.internal', 'on', true);
   if v_user is null then
     raise exception 'auth_required';
   end if;
@@ -918,6 +991,7 @@ declare
   v_hours integer;
   v_reason text;
 begin
+  perform set_config('app.internal', 'on', true);
   if v_user is null then
     raise exception 'auth_required';
   end if;
@@ -984,6 +1058,7 @@ declare
   v_hours integer;
   v_service services%rowtype;
 begin
+  perform set_config('app.internal', 'on', true);
   if v_user is null then
     raise exception 'auth_required';
   end if;
@@ -1065,6 +1140,7 @@ declare
   v_role text;
   v_allowed boolean;
 begin
+  perform set_config('app.internal', 'on', true);
   if v_user is null then
     raise exception 'auth_required';
   end if;
@@ -1157,6 +1233,7 @@ declare
   v_id uuid;
   v_email text := lower(trim(p_email));
 begin
+  perform set_config('app.internal', 'on', true);
   if current_setting('app.service', true) <> 'on' then
     raise exception 'forbidden';
   end if;
@@ -1188,6 +1265,7 @@ declare
   v_id uuid;
   v_role text;
 begin
+  perform set_config('app.internal', 'on', true);
   v_role := member_role(p_organization_id);
   if v_role is null or v_role not in ('org_admin', 'receptionist') then
     raise exception 'forbidden';
@@ -1228,6 +1306,7 @@ declare
   v_user uuid := current_app_user();
   v_id uuid;
 begin
+  perform set_config('app.internal', 'on', true);
   if v_user is null then
     raise exception 'auth_required';
   end if;
@@ -1286,6 +1365,7 @@ security definer
 set search_path = public
 as $$
 begin
+  perform set_config('app.internal', 'on', true);
   if current_platform_role() <> 'superadmin' then
     raise exception 'forbidden';
   end if;
@@ -1316,6 +1396,7 @@ as $$
 declare
   v_id uuid;
 begin
+  perform set_config('app.internal', 'on', true);
   if current_platform_role() <> 'superadmin' then
     raise exception 'forbidden';
   end if;
@@ -1345,6 +1426,7 @@ security definer
 set search_path = public
 as $$
 begin
+  perform set_config('app.internal', 'on', true);
   if current_platform_role() <> 'superadmin' then
     raise exception 'forbidden';
   end if;
@@ -1375,6 +1457,7 @@ security definer
 set search_path = public
 as $$
 begin
+  perform set_config('app.internal', 'on', true);
   if current_platform_role() <> 'superadmin' then
     raise exception 'forbidden';
   end if;
@@ -1430,6 +1513,7 @@ declare
   v_inv organization_invitations%rowtype;
   v_email text;
 begin
+  perform set_config('app.internal', 'on', true);
   if v_user is null then
     raise exception 'auth_required';
   end if;
@@ -1480,6 +1564,7 @@ as $$
 declare
   v_user uuid := current_app_user();
 begin
+  perform set_config('app.internal', 'on', true);
   if v_user is null then
     raise exception 'auth_required';
   end if;
@@ -1516,6 +1601,7 @@ as $$
 declare
   v_id uuid;
 begin
+  perform set_config('app.internal', 'on', true);
   if current_setting('app.service', true) <> 'on' then
     raise exception 'forbidden';
   end if;
@@ -1552,6 +1638,7 @@ as $$
 declare
   v_user uuid;
 begin
+  perform set_config('app.internal', 'on', true);
   if current_setting('app.service', true) <> 'on' then
     raise exception 'forbidden';
   end if;
@@ -1581,6 +1668,7 @@ declare
   v_row record;
   v_id uuid;
 begin
+  perform set_config('app.internal', 'on', true);
   if current_setting('app.service', true) <> 'on' then
     raise exception 'forbidden';
   end if;

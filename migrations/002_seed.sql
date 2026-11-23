@@ -1,6 +1,43 @@
 -- Datos ficticios. Estas cuentas no tienen contraseña usable.
 select set_config('app.seed', 'on', true);
 
+-- El dueño de las tablas no es superusuario en la base publicada y FORCE RLS
+-- también lo alcanza. runtime_bypass deja pasar la semilla, el servicio y el
+-- código de reserva. Si podemos asumir app_rls, el dueño recupera el acceso
+-- solo mientras no cambió de rol: cada persona sigue limitada por las demás políticas.
+do $$
+declare
+  table_name text;
+  can_assume boolean := false;
+begin
+  if exists (select 1 from pg_roles where rolname = 'app_rls') then
+    can_assume := pg_has_role(current_user, 'app_rls', 'member');
+  end if;
+  foreach table_name in array array[
+    'profiles', 'organizations', 'clinic_locations', 'specialties', 'professionals',
+    'organization_members', 'services', 'professional_specialties', 'professional_services',
+    'recurring_availability', 'availability_exceptions', 'appointments', 'appointment_status_history',
+    'notification_events', 'audit_logs', 'organization_invitations', 'sessions',
+    'password_reset_tokens', 'rate_limits'
+  ]
+  loop
+    execute format('drop policy if exists runtime_bypass on %I', table_name);
+    execute format(
+      'create policy runtime_bypass on %I for all using (current_setting(''app.service'', true) = ''on'' or current_setting(''app.seed'', true) = ''on'' or current_setting(''app.internal'', true) = ''on'') with check (current_setting(''app.service'', true) = ''on'' or current_setting(''app.seed'', true) = ''on'' or current_setting(''app.internal'', true) = ''on'')',
+      table_name
+    );
+    if can_assume then
+      execute format('drop policy if exists owner_full_access on %I', table_name);
+      execute format(
+        'create policy owner_full_access on %I for all using (current_user = session_user and current_user <> %L) with check (current_user = session_user and current_user <> %L)',
+        table_name,
+        'app_rls',
+        'app_rls'
+      );
+    end if;
+  end loop;
+end $$;
+
 insert into specialties (id, name, slug, description) values
   ('00000000-0000-4000-8000-000000000001', 'Medicina general', 'medicina-general', 'Atención clínica de adultos'),
   ('00000000-0000-4000-8000-000000000002', 'Psicología', 'psicologia', 'Acompañamiento psicológico'),

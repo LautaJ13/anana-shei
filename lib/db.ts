@@ -51,14 +51,59 @@ async function migrationFiles(): Promise<string[]> {
   return (await readdir(dir)).filter((file) => file.endsWith(".sql")).sort();
 }
 
+function withoutAppRoleGrants(sql: string): string {
+  return sql.replace(/grant\b[\s\S]*?\bto\s+app_rls\s*;/gi, "");
+}
+
+async function ensureAppRole(query: Queryable): Promise<boolean> {
+  const existing = await query.query("select 1 from pg_roles where rolname = 'app_rls'");
+  if (existing.rows.length === 0) {
+    try {
+      await query.query("create role app_rls nologin nosuperuser nobypassrls");
+    } catch (error) {
+      if ((error as { code?: string }).code !== "42501") throw error;
+      return false;
+    }
+  }
+  try {
+    await query.query("grant app_rls to current_user");
+  } catch (error) {
+    if ((error as { code?: string }).code !== "42501") throw error;
+    return false;
+  }
+  return true;
+}
+
+async function assumeAppRole(db: Queryable): Promise<void> {
+  const found = await db.query<{ ok: boolean }>("select exists (select 1 from pg_roles where rolname = 'app_rls') as ok");
+  if (!found.rows[0]?.ok) return;
+  const allowed = await db.query<{ ok: boolean }>(
+    `select pg_has_role(current_user, 'app_rls', 'member')
+        or coalesce((select rolsuper from pg_roles where rolname = current_user), false) as ok`,
+  );
+  if (allowed.rows[0]?.ok) await db.query("set local role app_rls");
+}
+
+function userQueries(db: Queryable): Queryable {
+  return {
+    async query<T = Record<string, unknown>>(text: string, params?: readonly unknown[]) {
+      const result = await db.query<T>(text, params);
+      await db.query("select set_config('app.internal', '', true)");
+      return result;
+    },
+  };
+}
+
 async function migratePglite(db: PGlite): Promise<void> {
   await db.exec(
     "create table if not exists schema_migrations (name text primary key, applied_at timestamptz not null default now())",
   );
+  const roleReady = await ensureAppRole(db);
   for (const file of await migrationFiles()) {
     const done = await db.query<{ name: string }>("select name from schema_migrations where name = $1", [file]);
     if (done.rows.length > 0) continue;
-    const sql = await readFile(path.join(process.cwd(), "migrations", file), "utf8");
+    const raw = await readFile(path.join(process.cwd(), "migrations", file), "utf8");
+    const sql = roleReady ? raw : withoutAppRoleGrants(raw);
     await db.transaction(async (tx) => {
       await tx.exec(sql);
       await tx.query("insert into schema_migrations (name) values ($1)", [file]);
@@ -74,10 +119,12 @@ async function migratePg(pool: pg.Pool): Promise<void> {
     await client.query(
       "create table if not exists schema_migrations (name text primary key, applied_at timestamptz not null default now())",
     );
+    const roleReady = await ensureAppRole(client);
     for (const file of await migrationFiles()) {
       const done = await client.query("select name from schema_migrations where name = $1", [file]);
       if (done.rows.length > 0) continue;
-      const sql = await readFile(path.join(process.cwd(), "migrations", file), "utf8");
+      const raw = await readFile(path.join(process.cwd(), "migrations", file), "utf8");
+      const sql = roleReady ? raw : withoutAppRoleGrants(raw);
       await client.query("begin");
       try {
         await client.query(sql);
@@ -99,8 +146,8 @@ function wrapPglite(db: PGlite): AppDatabase {
     withUser(userId, fn) {
       return db.transaction(async (tx) => {
         await tx.query("select set_config('app.user_id', $1, true)", [userId ?? ""]);
-        await tx.exec("set local role app_rls");
-        return fn(tx);
+        await assumeAppRole(tx);
+        return fn(userQueries(tx));
       });
     },
     withService(fn) {
@@ -136,8 +183,8 @@ function wrapPg(pool: pg.Pool): AppDatabase {
     withUser(userId, fn) {
       return transaction(async (db) => {
         await db.query("select set_config('app.user_id', $1, true)", [userId ?? ""]);
-        await db.query("set local role app_rls");
-      }, fn);
+        await assumeAppRole(db);
+      }, (db) => fn(userQueries(db)));
     },
     withService(fn) {
       return transaction(async (db) => {
