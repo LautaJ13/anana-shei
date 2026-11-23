@@ -22,6 +22,7 @@ create table profiles (
   password_hash text not null,
   full_name text not null,
   phone text,
+  contact_email text,
   birth_date date,
   platform_role text not null default 'user' check (platform_role in ('user', 'superadmin')),
   status text not null default 'active' check (status in ('active', 'disabled')),
@@ -30,7 +31,8 @@ create table profiles (
   updated_at timestamptz not null default now(),
   deleted_at timestamptz,
   constraint profiles_name_len check (char_length(full_name) between 2 and 120),
-  constraint profiles_phone_len check (phone is null or char_length(phone) <= 30)
+  constraint profiles_phone_len check (phone is null or char_length(phone) <= 30),
+  constraint profiles_contact_email_len check (contact_email is null or char_length(contact_email) <= 160)
 );
 
 create unique index profiles_email_unique on profiles (lower(email));
@@ -506,6 +508,32 @@ $$;
 create trigger organization_members_last_admin before update on organization_members
 for each row execute function protect_last_admin();
 
+create function members_same_clinic() returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform set_config('app.internal', 'on', true);
+  if tg_op = 'UPDATE' and (new.organization_id <> old.organization_id or new.user_id <> old.user_id) then
+    raise exception 'forbidden';
+  end if;
+  if new.role not in ('org_admin', 'professional', 'receptionist') then
+    raise exception 'forbidden';
+  end if;
+  if new.professional_id is not null and not exists (
+    select 1 from professionals p
+    where p.id = new.professional_id and p.organization_id = new.organization_id
+  ) then
+    raise exception 'cross_organization';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger organization_members_same_clinic before insert or update on organization_members
+for each row execute function members_same_clinic();
+
 create function same_organization_service() returns trigger
 language plpgsql
 security definer
@@ -693,6 +721,7 @@ begin
     where p.id = new.patient_id
       and p.password_hash = '!'
       and p.deleted_at is null
+      and p.email ~ '^staff-[0-9a-f]+@patients\.alba\.invalid$'
       and not exists (select 1 from appointments other where other.patient_id = p.id)
   ) then
     return new;
@@ -1310,20 +1339,38 @@ begin
   if char_length(trim(p_full_name)) < 2 then
     raise exception 'invalid_name';
   end if;
-  perform consume_rate_limit('patient-lookup:' || current_app_user()::text, 30, interval '1 hour');
-  select id into v_id from profiles where lower(email) = v_email and deleted_at is null;
-  if found then
-    -- No devolvemos una cuenta de otra clínica: eso mostraría nombre, teléfono y fecha de nacimiento.
-    if exists (
-      select 1 from appointments a
-      where a.patient_id = v_id and a.organization_id = p_organization_id
-    ) then
-      return v_id;
-    end if;
-    raise exception 'patient_outside_clinic';
+  if not exists (
+    select 1 from organizations o
+    where o.id = p_organization_id and o.status = 'active'
+  ) then
+    raise exception 'forbidden';
   end if;
-  insert into profiles (email, password_hash, full_name, phone, platform_role, status)
-  values (v_email, '!', trim(p_full_name), nullif(trim(coalesce(p_phone, '')), ''), 'user', 'active')
+  perform consume_rate_limit('patient-lookup:' || current_app_user()::text, 30, interval '1 hour');
+  select p.id into v_id
+  from profiles p
+  where p.deleted_at is null
+    and (
+      lower(p.email) = v_email
+      or lower(coalesce(p.contact_email, '')) = v_email
+    )
+    and exists (
+      select 1 from appointments a
+      where a.patient_id = p.id and a.organization_id = p_organization_id
+    )
+  limit 1;
+  if found then
+    return v_id;
+  end if;
+  insert into profiles (email, password_hash, full_name, phone, contact_email, platform_role, status)
+  values (
+    'staff-' || replace(gen_random_uuid()::text, '-', '') || '@patients.alba.invalid',
+    '!',
+    trim(p_full_name),
+    nullif(trim(coalesce(p_phone, '')), ''),
+    v_email,
+    'user',
+    'active'
+  )
   returning id into v_id;
   return v_id;
 end;
@@ -1733,7 +1780,7 @@ $$;
 
 -- Permisos de app_rls. Las columnas sensibles de profiles no se pueden leer ni escribir.
 grant select (
-  id, email, full_name, phone, birth_date, platform_role, status, is_demo, created_at, updated_at, deleted_at
+  id, email, full_name, phone, contact_email, birth_date, platform_role, status, is_demo, created_at, updated_at, deleted_at
 ) on profiles to app_rls;
 grant update (full_name, phone, birth_date) on profiles to app_rls;
 
@@ -1747,7 +1794,7 @@ grant select on specialties to app_rls;
 grant select, insert on professionals to app_rls;
 grant update (full_name, license_number, bio, can_manage_availability, active, color) on professionals to app_rls;
 grant select (id, organization_id, user_id, role, professional_id, status, created_at, updated_at) on organization_members to app_rls;
-grant update (role, status, professional_id) on organization_members to app_rls;
+grant update (role, status) on organization_members to app_rls;
 grant select, insert, update, delete on services to app_rls;
 grant select, insert, delete on professional_specialties to app_rls;
 grant select, insert, delete on professional_services to app_rls;
@@ -1879,6 +1926,13 @@ using (member_role(organization_id) = 'org_admin')
 with check (
   member_role(organization_id) = 'org_admin'
   and role in ('org_admin', 'professional', 'receptionist')
+  and (
+    professional_id is null
+    or exists (
+      select 1 from professionals p
+      where p.id = professional_id and p.organization_id = organization_members.organization_id
+    )
+  )
 );
 
 create policy services_select on services for select using (
@@ -2088,5 +2142,6 @@ revoke all on function protect_professional() from public;
 revoke all on function protect_last_admin() from public;
 revoke all on function appointments_prevent_overlap() from public;
 revoke all on function appointments_guard_staff_patient() from public;
+revoke all on function members_same_clinic() from public;
 revoke all on function appointments_same_org() from public;
 revoke all on function invitation_same_org() from public;

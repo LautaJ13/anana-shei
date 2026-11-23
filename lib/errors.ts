@@ -6,7 +6,7 @@ const MESSAGES: Record<string, string> = {
   cancellation_window: "Esa consulta ya no se puede cambiar según la política del consultorio.",
   rate_limited: "Hiciste demasiados intentos. Esperá un momento y probá de nuevo.",
   not_available: "No encontramos ese dato o ya no está disponible.",
-  email_taken: "Ya existe una cuenta con ese correo.",
+  email_taken: "No pudimos crear la cuenta con esos datos.",
   invalid_credentials: "El correo o la contraseña no son correctos.",
   invalid_name: "Revisá el nombre.",
   invalid_email: "Revisá el correo electrónico.",

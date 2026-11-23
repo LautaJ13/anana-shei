@@ -33,7 +33,7 @@ test("reservas, concurrencia, aislamiento y zona horaria", async () => {
     const platform = await userId(db, "plataforma@demo.alba.uy");
 
     await assert.rejects(
-      () => authenticate(db, { email: "camila.rodriguez@demo.alba.uy", password: "clave-que-no-existe", ip: "test" }),
+      () => authenticate(db, { email: "camila.rodriguez@demo.alba.uy", password: "clave-que-no-existe" }),
       /invalid_credentials|demo_disabled/,
     );
 
@@ -171,20 +171,59 @@ test("reservas, concurrencia, aislamiento y zona horaria", async () => {
       query.query<{ platform_role: string }>("select platform_role from profiles where id = $1", [created]),
     );
     assert.equal(role.rows[0]?.platform_role, "user");
-    const loggedIn = await authenticate(db, { email: "nueva.paciente@example.com", password: "clave-segura-1", ip: "test-2" });
+    const loggedIn = await authenticate(db, { email: "nueva.paciente@example.com", password: "clave-segura-1" });
     assert.equal(loggedIn.id, created);
 
+    const outside = await db.withUser(martin, (query) =>
+      query.query<{ find_or_create_patient: string }>(
+        `select find_or_create_patient($1::uuid, $2, $3, $4) as find_or_create_patient`,
+        [PRADO, "nueva.paciente@example.com", "Nombre Inventado", "099000000"],
+      ),
+    );
+    const outsideId = outside.rows[0]?.find_or_create_patient;
+    assert.ok(outsideId);
+    assert.notEqual(outsideId, created);
+    const untouched = await db.withService((query) =>
+      query.query<{ full_name: string; email: string }>("select full_name, email from profiles where id = $1", [created]),
+    );
+    assert.equal(untouched.rows[0]?.full_name, "Nueva Paciente");
+    assert.equal(untouched.rows[0]?.email, "nueva.paciente@example.com");
+    const shell = await db.withService((query) =>
+      query.query<{ email: string; contact_email: string }>(
+        "select email, contact_email from profiles where id = $1",
+        [outsideId],
+      ),
+    );
+    assert.match(shell.rows[0]?.email ?? "", /@patients\.alba\.invalid$/);
+    assert.equal(shell.rows[0]?.contact_email, "nueva.paciente@example.com");
+    const pending = await db.withUser(created, (query) =>
+      query.query<{ create_organization: string }>(
+        `select create_organization($1, $2, $3, $4, $5, $6, $7, $8) as create_organization`,
+        ["Clínica Nueva", "clinica-nueva-test", "", "", "", "Una calle 1", "Montevideo", "Montevideo"],
+      ),
+    );
     await assert.rejects(
       () =>
-        db.withUser(martin, (query) =>
+        db.withUser(created, (query) =>
           query.query(`select find_or_create_patient($1::uuid, $2, $3, $4)`, [
-            PRADO,
-            "nueva.paciente@example.com",
-            "Nombre Inventado",
-            "099000000",
+            pending.rows[0]?.create_organization,
+            "otra.persona@example.com",
+            "Otra Persona",
+            "099",
           ]),
         ),
-      /patient_outside_clinic/,
+      /forbidden/,
+    );
+    await assert.rejects(
+      () =>
+        db.withService((query) =>
+          query.query(
+            `update organization_members set professional_id = $1::uuid
+             where user_id = $2::uuid and organization_id = $3::uuid`,
+            [SOFIA, martin, PRADO],
+          ),
+        ),
+      /cross_organization/,
     );
     const fresh = await db.withUser(martin, (query) =>
       query.query<{ find_or_create_patient: string }>(

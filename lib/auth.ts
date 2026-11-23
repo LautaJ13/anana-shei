@@ -51,14 +51,14 @@ export async function registerAccount(
 
 export async function authenticate(
   database: AppDatabase,
-  input: { email: string; password: string; ip: string },
+  input: { email: string; password: string },
 ): Promise<SessionUser> {
   const email = input.email.trim().toLowerCase();
   await database.withService((db) =>
-    db.query(`select consume_rate_limit($1, 20, interval '15 minutes')`, [`login-ip:${input.ip}`]),
+    db.query(`select consume_rate_limit($1, 8, interval '15 minutes')`, [`login-email:${email}`]),
   );
   await database.withService((db) =>
-    db.query(`select consume_rate_limit($1, 10, interval '15 minutes')`, [`login-email:${email}`]),
+    db.query(`select consume_rate_limit('login-global', 300, interval '15 minutes')`),
   );
   const found = await database.withService((db) =>
     db.query<ProfileRow>(

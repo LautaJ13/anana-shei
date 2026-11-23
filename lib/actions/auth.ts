@@ -5,7 +5,7 @@ import { authenticate, consumePasswordReset, issuePasswordReset, registerAccount
 import { getDatabase } from "@/lib/db";
 import { deliverPasswordReset, isEmailConfigured } from "@/lib/email";
 import { mapDbError } from "@/lib/errors";
-import { appOrigin, clientIp, safeNext } from "@/lib/http";
+import { appOrigin, safeNext } from "@/lib/http";
 import { endSession, startSession } from "@/lib/session";
 import { loginSchema, registerSchema, resetPasswordSchema, resetRequestSchema } from "@/lib/validators";
 
@@ -17,7 +17,7 @@ export async function loginAction(input: unknown, nextPath: string): Promise<Aut
   if (parsed.data.companyFax) return { ok: false, error: "No pudimos procesar el formulario." };
   try {
     const database = await getDatabase();
-    const user = await authenticate(database, { ...parsed.data, ip: await clientIp() });
+    const user = await authenticate(database, { email: parsed.data.email, password: parsed.data.password });
     await startSession(user.id);
   } catch (error) {
     return { ok: false, error: mapDbError(error) };
@@ -31,9 +31,12 @@ export async function registerAction(input: unknown, nextPath: string): Promise<
   if (parsed.data.companyFax) return { ok: false, error: "No pudimos procesar el formulario." };
   try {
     const database = await getDatabase();
-    const ip = await clientIp();
+    const email = parsed.data.email.trim().toLowerCase();
     await database.withService((query) =>
-      query.query(`select consume_rate_limit($1, 5, interval '1 hour')`, [`register:${ip}`]),
+      query.query(`select consume_rate_limit($1, 3, interval '1 hour')`, [`register-email:${email}`]),
+    );
+    await database.withService((query) =>
+      query.query(`select consume_rate_limit('register-global', 40, interval '1 hour')`),
     );
     const id = await registerAccount(database, parsed.data);
     await startSession(id);
@@ -54,9 +57,12 @@ export async function requestResetAction(input: unknown): Promise<AuthState> {
   if (parsed.data.companyFax) return { ok: false, error: "No pudimos procesar el formulario." };
   const database = await getDatabase();
   try {
-    const ip = await clientIp();
+    const email = parsed.data.email.trim().toLowerCase();
     await database.withService((query) =>
-      query.query(`select consume_rate_limit($1, 5, interval '1 hour')`, [`reset:${ip}`]),
+      query.query(`select consume_rate_limit($1, 5, interval '1 hour')`, [`reset-email:${email}`]),
+    );
+    await database.withService((query) =>
+      query.query(`select consume_rate_limit('reset-global', 40, interval '1 hour')`),
     );
   } catch (error) {
     return { ok: false, error: mapDbError(error) };

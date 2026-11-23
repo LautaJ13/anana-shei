@@ -6,6 +6,9 @@ export const STATUS_LABEL = {
   no_show: "Ausente",
 } as const;
 
+export const PATIENT_EMAIL_SQL =
+  "case when p.email like '%@patients.alba.invalid' then coalesce(p.contact_email, '') else p.email end";
+
 export const ROLE_LABEL = {
   org_admin: "Administración",
   professional: "Profesional",

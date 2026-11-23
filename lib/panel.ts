@@ -2,6 +2,7 @@ import "server-only";
 import { notFound, redirect } from "next/navigation";
 import type { Membership, SessionUser } from "./auth";
 import { getDatabase } from "./db";
+import { PATIENT_EMAIL_SQL } from "./labels";
 import { getCurrentUser } from "./session";
 
 export async function requirePanel(slug: string): Promise<{ user: SessionUser; membership: Membership }> {
@@ -41,7 +42,7 @@ export async function listPanelAppointments(
   const rows = await database.withUser(userId, (query) =>
     query.query<PanelAppointment>(
       `select a.id, a.starts_at, a.ends_at, a.status, a.source,
-              p.full_name as patient_name, p.email as patient_email, p.phone as patient_phone,
+              p.full_name as patient_name, ${PATIENT_EMAIL_SQL} as patient_email, p.phone as patient_phone,
               pr.id as professional_id, pr.full_name as professional_name,
               s.name as service_name, l.name as location_name, l.timezone
        from appointments a

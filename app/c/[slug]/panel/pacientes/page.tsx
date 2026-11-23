@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/empty-state";
 import { getDatabase } from "@/lib/db";
+import { PATIENT_EMAIL_SQL } from "@/lib/labels";
 import { requirePanel, staffScope } from "@/lib/panel";
 
 export const metadata = { title: "Pacientes" };
@@ -10,7 +11,7 @@ export default async function PatientsPage({ params }: { params: Promise<{ slug:
   const database = await getDatabase();
   const rows = await database.withUser(user.id, (db) =>
     db.query<{ id: string; full_name: string; email: string; phone: string | null }>(
-      `select distinct p.id, p.full_name, p.email, p.phone
+      `select distinct p.id, p.full_name, ${PATIENT_EMAIL_SQL} as email, p.phone
        from appointments a join profiles p on p.id = a.patient_id
        where a.organization_id = $1 and ($2::uuid is null or a.professional_id = $2::uuid)
        order by p.full_name`,
