@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { authenticate, registerAccount } from "../lib/auth.ts";
+import { authenticate, registerAccount, registerOrResume } from "../lib/auth.ts";
 import { bookAppointment, cancelAppointment, rescheduleAppointment } from "../lib/booking.ts";
 import { createMemoryDatabase, type AppDatabase } from "../lib/db.ts";
 import { errorText } from "../lib/errors.ts";
@@ -207,6 +207,18 @@ test("reservas, concurrencia, aislamiento y zona horaria", async () => {
       password: "clave-segura-1",
     });
     assert.equal(stillOwner.id, created);
+    const resumed = await registerOrResume(db, {
+      email: "nueva.paciente@example.com",
+      password: "clave-segura-1",
+      fullName: "Nueva Paciente",
+    });
+    assert.equal(resumed, created);
+    const rejected = await registerOrResume(db, {
+      email: "nueva.paciente@example.com",
+      password: "otra-clave-22",
+      fullName: "Nueva Paciente",
+    });
+    assert.equal(rejected, null);
     const claimed = await registerAccount(db, {
       email: "telefono.nuevo@example.com",
       password: "clave-segura-1",

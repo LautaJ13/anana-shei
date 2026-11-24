@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { authenticate, consumePasswordReset, issuePasswordReset, registerAccount } from "@/lib/auth";
+import { authenticate, consumePasswordReset, issuePasswordReset, registerOrResume } from "@/lib/auth";
 import { getDatabase } from "@/lib/db";
 import { deliverPasswordReset, isEmailConfigured } from "@/lib/email";
 import { mapDbError } from "@/lib/errors";
@@ -29,23 +29,12 @@ export async function registerAction(input: unknown, nextPath: string): Promise<
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Revisá los datos." };
   try {
     const database = await getDatabase();
-    const email = parsed.data.email.trim().toLowerCase();
-    await database.withService((query) =>
-      query.query(`select consume_rate_limit($1, 20, interval '1 hour')`, [`register-email:${email}`]),
-    );
-    await database.withService((query) =>
-      query.query(`select consume_rate_limit('register-global', 200, interval '1 hour')`),
-    );
-    const id = await registerAccount(database, parsed.data);
+    const id = await registerOrResume(database, parsed.data);
     if (!id) {
-      return { ok: false, error: "No pudimos crear la cuenta. Si ya te registraste, ingresá con tu clave." };
+      return { ok: false, error: "Ese correo ya tiene una cuenta y la contraseña no coincide. Ingresá con tu clave o usá otro correo." };
     }
     await startSession(id);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "";
-    if (message.includes("email_taken")) {
-      return { ok: false, error: "No pudimos crear la cuenta. Si ya te registraste, ingresá con tu clave." };
-    }
     return { ok: false, error: mapDbError(error) };
   }
   return { ok: true, next: safeNext(nextPath) };

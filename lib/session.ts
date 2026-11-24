@@ -4,13 +4,14 @@ import { cache } from "react";
 import { createSession, destroySession, readSession, type SessionUser } from "./auth";
 import { getDatabase } from "./db";
 
-const COOKIE = "alba_session";
+export const SESSION_COOKIE = "alba_session";
+const COOKIE = SESSION_COOKIE;
 
-function cookieOptions() {
+export function sessionCookieOptions(secure = process.env.NODE_ENV === "production") {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     path: "/",
     maxAge: 60 * 60 * 24 * 14,
   };
@@ -26,7 +27,7 @@ export async function startSession(userId: string): Promise<void> {
   const database = await getDatabase();
   const token = await createSession(database, userId);
   const jar = await cookies();
-  jar.set(COOKIE, token, cookieOptions());
+  jar.set(COOKIE, token, sessionCookieOptions());
 }
 
 export async function endSession(): Promise<void> {

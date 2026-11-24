@@ -1,4 +1,4 @@
-import type { AppDatabase } from "./db";
+import type { AppDatabase, Queryable } from "./db";
 import { hashPassword, newToken, sha256, verifyPassword } from "./password";
 
 export type Membership = {
@@ -47,6 +47,32 @@ export async function registerAccount(
     );
     return rows.rows[0]?.register_user ?? null;
   });
+}
+
+export async function registerOrResume(
+  database: AppDatabase,
+  input: { email: string; password: string; fullName: string; phone?: string | null },
+): Promise<string | null> {
+  try {
+    const created = await registerAccount(database, input);
+    if (created) return created;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!message.includes("email_taken")) throw error;
+  }
+  const email = input.email.trim().toLowerCase();
+  const found = await database.withService((db) =>
+    db.query<{ id: string; password_hash: string; is_demo: boolean; status: string }>(
+      `select id, password_hash, is_demo, status
+       from profiles
+       where lower(email) = $1 and deleted_at is null`,
+      [email],
+    ),
+  );
+  const profile = found.rows[0];
+  if (!profile || profile.status !== "active" || (demoLoginsDisabled() && profile.is_demo)) return null;
+  if (!(await verifyPassword(input.password, profile.password_hash))) return null;
+  return profile.id;
 }
 
 export async function authenticate(
@@ -109,34 +135,30 @@ export async function readSession(database: AppDatabase, token: string | undefin
   return readUser(database, row.id);
 }
 
-export async function readUser(database: AppDatabase, userId: string): Promise<SessionUser | null> {
-  const profile = await database.withUser(userId, (db) =>
-    db.query<ProfileRow>(
-      `select id, email, full_name, phone, birth_date::text as birth_date, platform_role, is_demo
-       from profiles where id = $1`,
-      [userId],
-    ),
+async function sessionUser(query: Queryable, userId: string): Promise<SessionUser | null> {
+  const profile = await query.query<ProfileRow>(
+    `select id, email, full_name, phone, birth_date::text as birth_date, platform_role, is_demo
+     from profiles where id = $1`,
+    [userId],
   );
   const row = profile.rows[0];
   if (!row) return null;
-  const memberships = await database.withUser(userId, (db) =>
-    db.query<{
-      organization_id: string;
-      name: string;
-      slug: string;
-      status: string;
-      role: Membership["role"];
-      professional_id: string | null;
-      can_manage_availability: boolean | null;
-    }>(
-      `select m.organization_id, o.name, o.slug, o.status, m.role, m.professional_id, pr.can_manage_availability
-       from organization_members m
-       join organizations o on o.id = m.organization_id
-       left join professionals pr on pr.id = m.professional_id
-       where m.user_id = $1 and m.status = 'active'
-       order by o.name`,
-      [userId],
-    ),
+  const memberships = await query.query<{
+    organization_id: string;
+    name: string;
+    slug: string;
+    status: string;
+    role: Membership["role"];
+    professional_id: string | null;
+    can_manage_availability: boolean | null;
+  }>(
+    `select m.organization_id, o.name, o.slug, o.status, m.role, m.professional_id, pr.can_manage_availability
+     from organization_members m
+     join organizations o on o.id = m.organization_id
+     left join professionals pr on pr.id = m.professional_id
+     where m.user_id = $1 and m.status = 'active'
+     order by o.name`,
+    [userId],
   );
   return {
     id: row.id,
@@ -156,6 +178,16 @@ export async function readUser(database: AppDatabase, userId: string): Promise<S
       canManageAvailability: Boolean(item.can_manage_availability),
     })),
   };
+}
+
+export async function readUser(database: AppDatabase, userId: string): Promise<SessionUser | null> {
+  try {
+    const asUser = await database.withUser(userId, (query) => sessionUser(query, userId));
+    if (asUser) return asUser;
+  } catch (error) {
+    console.error(error);
+  }
+  return database.withService((query) => sessionUser(query, userId));
 }
 
 export async function issuePasswordReset(database: AppDatabase, email: string): Promise<string | null> {

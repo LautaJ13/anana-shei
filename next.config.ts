@@ -2,6 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["@electric-sql/pglite"],
+  experimental: {
+    serverActions: {
+      allowedOrigins: ["alba.apps.grok.bot", "*.apps.grok.bot"],
+    },
+  },
   async headers() {
     return [
       {

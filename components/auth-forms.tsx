@@ -3,109 +3,55 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { loginAction, registerAction, requestResetAction, resetPasswordAction } from "@/lib/actions/auth";
-import { loginSchema, registerSchema, resetPasswordSchema, resetRequestSchema, type LoginInput, type RegisterInput } from "@/lib/validators";
+import { requestResetAction, resetPasswordAction } from "@/lib/actions/auth";
+import { resetPasswordSchema, resetRequestSchema } from "@/lib/validators";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 
-export function LoginForm({ nextPath }: { nextPath: string }) {
-  const form = useForm<LoginInput>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "", companyFax: "" },
-  });
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-
+export function LoginForm({ nextPath, error, email = "" }: { nextPath: string; error?: string; email?: string }) {
   return (
-    <form
-      className="space-y-4"
-      onSubmit={form.handleSubmit(async (values) => {
-        setPending(true);
-        setError(null);
-        try {
-          const result = await loginAction(values, nextPath);
-          if (!result.ok) {
-            setError(result.error);
-            return;
-          }
-          enter(result.next ?? nextPath);
-        } catch {
-          setError("No pudimos ingresar. Probá de nuevo.");
-        } finally {
-          setPending(false);
-        }
-      })}
-      noValidate
-    >
-      <Field label="Correo" error={form.formState.errors.email?.message} id="login-email">
-        <Input id="login-email" type="email" autoComplete="email" {...form.register("email")} />
+    <form className="space-y-4" method="post" action="/api/ingresar" acceptCharset="utf-8">
+      <input type="hidden" name="next" value={nextPath} />
+      {error ? <p className="rounded-xl border border-danger/30 bg-[#fff6f6] px-3 py-2 text-sm text-danger" role="alert">{error}</p> : null}
+      <Field label="Correo" id="login-email">
+        <Input id="login-email" name="email" type="email" autoComplete="email" required maxLength={160} defaultValue={email} />
       </Field>
-      <Field label="Contraseña" error={form.formState.errors.password?.message} id="login-password">
-        <Input id="login-password" type="password" autoComplete="current-password" {...form.register("password")} />
+      <Field label="Contraseña" id="login-password">
+        <Input id="login-password" name="password" type="password" autoComplete="current-password" required maxLength={72} />
       </Field>
-      <Honeypot register={form.register("companyFax")} />
-      {error ? <p className="text-sm text-danger" role="alert">{error}</p> : null}
-      <Button className="w-full" type="submit" disabled={pending}>
-        {pending ? "Ingresando…" : "Ingresar"}
-      </Button>
+      <Button className="w-full" type="submit">Ingresar</Button>
     </form>
   );
 }
 
-export function RegisterForm({ nextPath }: { nextPath: string }) {
-  const form = useForm<RegisterInput>({
-    resolver: zodResolver(registerSchema),
-    defaultValues: { fullName: "", email: "", phone: "", password: "", companyFax: "" },
-  });
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-
+export function RegisterForm({
+  nextPath,
+  error,
+  defaults,
+}: {
+  nextPath: string;
+  error?: string;
+  defaults: { fullName: string; email: string; phone: string };
+}) {
   return (
-    <form
-      className="space-y-4"
-      onSubmit={form.handleSubmit(async (values) => {
-        setPending(true);
-        setError(null);
-        setMessage(null);
-        try {
-          const result = await registerAction(values, nextPath);
-          if (!result.ok) {
-            setError(result.error);
-            return;
-          }
-          if (result.next) {
-            enter(result.next);
-            return;
-          }
-          setMessage(result.notice ?? "La cuenta quedó creada.");
-        } catch {
-          setError("No pudimos crear la cuenta. Probá de nuevo.");
-        } finally {
-          setPending(false);
-        }
-      })}
-      noValidate
-    >
-      <Field label="Nombre y apellido" error={form.formState.errors.fullName?.message} id="reg-name">
-        <Input id="reg-name" autoComplete="name" {...form.register("fullName")} />
+    <form className="space-y-4" method="post" action="/api/registro" acceptCharset="utf-8">
+      <input type="hidden" name="next" value={nextPath} />
+      {error ? <p className="rounded-xl border border-danger/30 bg-[#fff6f6] px-3 py-2 text-sm text-danger" role="alert">{error}</p> : null}
+      <Field label="Nombre y apellido" id="reg-name">
+        <Input id="reg-name" name="fullName" autoComplete="name" required minLength={2} maxLength={120} defaultValue={defaults.fullName} />
       </Field>
-      <Field label="Correo" error={form.formState.errors.email?.message} id="reg-email">
-        <Input id="reg-email" type="email" autoComplete="email" {...form.register("email")} />
+      <Field label="Correo" id="reg-email">
+        <Input id="reg-email" name="email" type="email" autoComplete="email" required maxLength={160} defaultValue={defaults.email} />
       </Field>
-      <Field label="Teléfono (opcional)" error={form.formState.errors.phone?.message} id="reg-phone">
-        <Input id="reg-phone" autoComplete="tel" {...form.register("phone")} />
+      <Field label="Teléfono (opcional)" id="reg-phone">
+        <Input id="reg-phone" name="phone" autoComplete="tel" maxLength={30} defaultValue={defaults.phone} />
       </Field>
-      <Field label="Contraseña" error={form.formState.errors.password?.message} id="reg-password">
-        <Input id="reg-password" type="password" autoComplete="new-password" {...form.register("password")} />
+      <Field label="Contraseña" id="reg-password">
+        <Input id="reg-password" name="password" type="password" autoComplete="new-password" required minLength={8} maxLength={72} />
       </Field>
-      <Honeypot register={form.register("companyFax")} />
-      {error ? <p className="text-sm text-danger" role="alert">{error}</p> : null}
-      {message ? <p className="text-sm text-navy" role="status">{message}</p> : null}
-      <Button className="w-full" type="submit" disabled={pending}>
-        {pending ? "Creando cuenta…" : "Crear cuenta"}
-      </Button>
+      <p className="text-sm text-muted">Mínimo 8 caracteres. Al crear la cuenta entrás directo.</p>
+      <Button className="w-full" type="submit">Crear cuenta</Button>
     </form>
   );
 }
