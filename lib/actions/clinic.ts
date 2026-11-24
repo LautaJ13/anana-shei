@@ -8,8 +8,8 @@ import { getDatabase } from "@/lib/db";
 import { deliverNotification, isEmailConfigured } from "@/lib/email";
 import { mapDbError } from "@/lib/errors";
 import { appOrigin, safeNext } from "@/lib/http";
+import { hashPassword, newToken, sha256, verifyPassword } from "@/lib/password";
 import { getCurrentUser } from "@/lib/session";
-import { newToken, sha256 } from "@/lib/password";
 import { minutesFromTime } from "@/lib/utils";
 import {
   availabilitySchema,
@@ -446,16 +446,36 @@ export async function updateProfileAction(input: unknown): Promise<FormState> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Necesitás iniciar sesión para continuar." };
   const database = await getDatabase();
+  const email = parsed.data.email.trim().toLowerCase();
+  const nextPassword = parsed.data.newPassword ?? "";
+  const currentPassword = parsed.data.currentPassword ?? "";
+  const emailChanged = email !== user.email.trim().toLowerCase();
+  if ((emailChanged || nextPassword) && !currentPassword) {
+    return { ok: false, error: "Para cambiar el correo o la contraseña, escribí la contraseña actual." };
+  }
+  if (emailChanged || nextPassword) {
+    const found = await database.withService((query) =>
+      query.query<{ password_hash: string }>(`select password_hash from profiles where id = $1`, [user.id]),
+    );
+    const hash = found.rows[0]?.password_hash;
+    if (!hash || !(await verifyPassword(currentPassword, hash))) {
+      return { ok: false, error: "La contraseña actual no coincide." };
+    }
+  }
+  const passwordHash = nextPassword ? await hashPassword(nextPassword) : null;
   try {
     await database.withUser(user.id, (query) =>
-      query.query(`update profiles set full_name = $2, phone = $3, birth_date = $4 where id = $1::uuid`, [
-        user.id,
+      query.query(`select update_own_profile($1, $2, $3, $4::date, $5)`, [
         parsed.data.fullName,
+        email,
         parsed.data.phone || null,
         parsed.data.birthDate || null,
+        passwordHash,
       ]),
     );
   } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("email_taken")) return { ok: false, error: "Ese correo ya está en uso." };
     return { ok: false, error: mapDbError(error) };
   }
   return { ok: true, message: "Datos actualizados." };
@@ -465,13 +485,13 @@ export async function deleteAccountAction(formData: FormData): Promise<void> {
   const user = await getCurrentUser();
   if (!user) redirect("/ingresar");
   if (String(formData.get("confirm") ?? "") !== "ELIMINAR") {
-    redirect("/cuenta/perfil?aviso=" + encodeURIComponent("Escribí ELIMINAR para confirmar."));
+    redirect("/cuenta/configuracion?aviso=" + encodeURIComponent("Escribí ELIMINAR para confirmar."));
   }
   const database = await getDatabase();
   try {
     await database.withUser(user.id, (query) => query.query(`select delete_own_account()`));
   } catch (error) {
-    redirect("/cuenta/perfil?aviso=" + encodeURIComponent(mapDbError(error)));
+    redirect("/cuenta/configuracion?aviso=" + encodeURIComponent(mapDbError(error)));
   }
   const { endSession } = await import("@/lib/session");
   await endSession();

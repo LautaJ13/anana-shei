@@ -33,11 +33,19 @@ export const resetPasswordSchema = z.object({
   password: passwordField,
 });
 
-export const profileSchema = z.object({
-  fullName: z.string().trim().min(2, "Ingresá tu nombre.").max(120),
-  phone: z.string().trim().max(30).optional().or(z.literal("")),
-  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Revisá la fecha.").optional().or(z.literal("")),
-});
+export const profileSchema = z
+  .object({
+    fullName: z.string().trim().min(2, "Ingresá tu nombre.").max(120),
+    email: emailField,
+    phone: z.string().trim().max(30, "El teléfono es demasiado largo.").optional().or(z.literal("")),
+    birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Revisá la fecha.").optional().or(z.literal("")),
+    currentPassword: z.string().max(72).optional().or(z.literal("")),
+    newPassword: z.string().max(72).optional().or(z.literal("")),
+  })
+  .refine((value) => !value.newPassword || value.newPassword.length >= 8, {
+    message: "La nueva contraseña tiene que tener al menos 8 caracteres.",
+    path: ["newPassword"],
+  });
 
 export const organizationSchema = z.object({
   name: z.string().trim().min(2, "Ingresá el nombre.").max(120),

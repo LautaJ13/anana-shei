@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -130,18 +131,51 @@ export function OrganizationForm({
 }
 
 export function ProfileForm({ defaults }: { defaults: ProfileInput }) {
+  const router = useRouter();
   const form = useForm<ProfileInput>({ resolver: zodResolver(profileSchema), defaultValues: defaults });
   const [state, setState] = useState<FormState | null>(null);
   const [pending, setPending] = useState(false);
   return (
     <form className="grid gap-4" noValidate onSubmit={form.handleSubmit(async (values) => {
       setPending(true);
-      setState(await updateProfileAction(values));
+      const result = await updateProfileAction(values);
+      setState(result);
       setPending(false);
+      if (result.ok) {
+        form.reset({ ...values, currentPassword: "", newPassword: "" });
+        router.refresh();
+      }
     })}>
-      <div className="space-y-1.5"><Label htmlFor="profile-name">Nombre</Label><Input id="profile-name" {...form.register("fullName")} /></div>
-      <div className="space-y-1.5"><Label htmlFor="profile-phone">Teléfono</Label><Input id="profile-phone" {...form.register("phone")} /></div>
-      <div className="space-y-1.5"><Label htmlFor="profile-birth">Fecha de nacimiento</Label><Input id="profile-birth" type="date" {...form.register("birthDate")} /></div>
+      <div className="space-y-1.5">
+        <Label htmlFor="profile-name">Nombre y apellido</Label>
+        <Input id="profile-name" autoComplete="name" {...form.register("fullName")} />
+        {form.formState.errors.fullName ? <p className="text-sm text-danger">{form.formState.errors.fullName.message}</p> : null}
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="profile-email">Correo</Label>
+        <Input id="profile-email" type="email" autoComplete="email" {...form.register("email")} />
+        {form.formState.errors.email ? <p className="text-sm text-danger">{form.formState.errors.email.message}</p> : null}
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="profile-phone">Teléfono</Label>
+        <Input id="profile-phone" autoComplete="tel" {...form.register("phone")} />
+        {form.formState.errors.phone ? <p className="text-sm text-danger">{form.formState.errors.phone.message}</p> : null}
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="profile-birth">Fecha de nacimiento</Label>
+        <Input id="profile-birth" type="date" autoComplete="bday" {...form.register("birthDate")} />
+        {form.formState.errors.birthDate ? <p className="text-sm text-danger">{form.formState.errors.birthDate.message}</p> : null}
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="profile-current">Contraseña actual</Label>
+        <Input id="profile-current" type="password" autoComplete="current-password" {...form.register("currentPassword")} />
+        <p className="text-sm text-muted">Hace falta solo si cambiás el correo o la contraseña.</p>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="profile-next">Nueva contraseña</Label>
+        <Input id="profile-next" type="password" autoComplete="new-password" {...form.register("newPassword")} />
+        {form.formState.errors.newPassword ? <p className="text-sm text-danger">{form.formState.errors.newPassword.message}</p> : null}
+      </div>
       <Message state={state} />
       <Button type="submit" disabled={pending}>{pending ? "Guardando…" : "Guardar datos"}</Button>
     </form>

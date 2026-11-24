@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { logoutAction } from "@/lib/actions/auth";
 import type { SessionUser } from "@/lib/auth";
+import { AccountMenu } from "./account-menu";
 import { Logo } from "./logo";
 
 export function SiteHeader({ user }: { user: SessionUser | null }) {
@@ -33,6 +34,7 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
                   Salir
                 </button>
               </form>
+              <AccountMenu name={user.fullName} email={user.email} />
             </>
           ) : (
             <>

@@ -54,7 +54,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
           <h1 className="text-3xl font-semibold text-navy">Hola, {user.fullName.split(" ")[0]}</h1>
           <p className="mt-1 text-sm text-muted">Estas son tus consultas. Nadie más puede verlas desde tu cuenta.</p>
         </div>
-        <Link className="text-sm font-semibold text-navy underline" href="/cuenta/perfil">Mis datos</Link>
+        <Link className="text-sm font-semibold text-navy underline" href="/cuenta/perfil">Editar perfil</Link>
       </div>
       {aviso ? <p className="mt-4 rounded-xl bg-white px-4 py-3 text-sm text-navy" role="status">{aviso}</p> : null}
       <section className="mt-6">

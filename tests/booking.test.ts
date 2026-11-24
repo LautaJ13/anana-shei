@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { authenticate, registerAccount, registerOrResume } from "../lib/auth.ts";
+import { hashPassword } from "../lib/password.ts";
 import { bookAppointment, cancelAppointment, rescheduleAppointment } from "../lib/booking.ts";
 import { createMemoryDatabase, type AppDatabase } from "../lib/db.ts";
 import { errorText } from "../lib/errors.ts";
@@ -219,6 +220,51 @@ test("reservas, concurrencia, aislamiento y zona horaria", async () => {
       fullName: "Nueva Paciente",
     });
     assert.equal(rejected, null);
+    await db.withUser(created, (query) =>
+      query.query(`select update_own_profile($1, $2, $3, $4::date, $5)`, [
+        "Nombre Editado",
+        "editada@example.com",
+        "099111222",
+        "1990-05-02",
+        null,
+      ]),
+    );
+    const edited = await db.withService((query) =>
+      query.query<{ full_name: string; email: string; phone: string; birth_date: string }>(
+        `select full_name, email, phone, birth_date::text as birth_date from profiles where id = $1`,
+        [created],
+      ),
+    );
+    assert.equal(edited.rows[0]?.full_name, "Nombre Editado");
+    assert.equal(edited.rows[0]?.email, "editada@example.com");
+    assert.equal(edited.rows[0]?.phone, "099111222");
+    assert.equal(edited.rows[0]?.birth_date, "1990-05-02");
+    await assert.rejects(
+      () =>
+        db.withUser(created, (query) =>
+          query.query(`select update_own_profile($1, $2, $3, $4::date, $5)`, [
+            "Nombre Editado",
+            "camila.rodriguez@demo.alba.uy",
+            "099111222",
+            "1990-05-02",
+            null,
+          ]),
+        ),
+      /email_taken/,
+    );
+    const nextHash = await hashPassword("clave-nueva-22");
+    await db.withUser(created, (query) =>
+      query.query(`select update_own_profile($1, $2, $3, $4::date, $5)`, [
+        "Nombre Editado",
+        "editada@example.com",
+        "099111222",
+        "1990-05-02",
+        nextHash,
+      ]),
+    );
+    const renamed = await authenticate(db, { email: "editada@example.com", password: "clave-nueva-22" });
+    assert.equal(renamed.id, created);
+    assert.equal(renamed.fullName, "Nombre Editado");
     const claimed = await registerAccount(db, {
       email: "telefono.nuevo@example.com",
       password: "clave-segura-1",

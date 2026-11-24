@@ -442,6 +442,14 @@ begin
   if tg_op = 'INSERT' and new.platform_role <> 'user' then
     raise exception 'forbidden';
   end if;
+  if current_setting('app.allow_own_profile', true) = 'on'
+    and new.id = current_app_user()
+    and new.platform_role is not distinct from old.platform_role
+    and new.status is not distinct from old.status
+    and new.is_demo is not distinct from old.is_demo
+    and new.deleted_at is not distinct from old.deleted_at then
+    return new;
+  end if;
   if tg_op = 'UPDATE' and (
     new.platform_role is distinct from old.platform_role
     or new.status is distinct from old.status
@@ -453,6 +461,66 @@ begin
     raise exception 'forbidden';
   end if;
   return new;
+end;
+$$;
+
+create function update_own_profile(
+  p_full_name text,
+  p_email text,
+  p_phone text,
+  p_birth_date date,
+  p_password_hash text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user uuid := current_app_user();
+  v_email text := lower(trim(p_email));
+begin
+  perform set_config('app.internal', 'on', true);
+  if v_user is null then
+    raise exception 'auth_required';
+  end if;
+  if exists (
+    select 1 from profiles
+    where id = v_user and (is_demo or status <> 'active' or deleted_at is not null)
+  ) then
+    raise exception 'forbidden';
+  end if;
+  if char_length(trim(p_full_name)) < 2 or char_length(trim(p_full_name)) > 120 then
+    raise exception 'invalid_name';
+  end if;
+  if v_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'
+    or char_length(v_email) > 160
+    or v_email like '%@patients.alba.invalid'
+    or v_email like '%@invalid.alba' then
+    raise exception 'invalid_email';
+  end if;
+  if p_phone is not null and char_length(trim(p_phone)) > 30 then
+    raise exception 'invalid_note';
+  end if;
+  if exists (
+    select 1 from profiles
+    where lower(email) = v_email and id <> v_user and deleted_at is null
+  ) then
+    raise exception 'email_taken';
+  end if;
+  perform set_config('app.allow_own_profile', 'on', true);
+  update profiles
+  set full_name = trim(p_full_name),
+      email = v_email,
+      phone = nullif(trim(coalesce(p_phone, '')), ''),
+      birth_date = p_birth_date,
+      password_hash = coalesce(p_password_hash, password_hash)
+  where id = v_user;
+  if not found then
+    raise exception 'forbidden';
+  end if;
+exception
+  when unique_violation then
+    raise exception 'email_taken';
 end;
 $$;
 
@@ -2144,6 +2212,7 @@ grant execute on function platform_organizations() to app_rls;
 grant execute on function invitation_preview(text) to app_rls;
 grant execute on function accept_invitation(text) to app_rls;
 grant execute on function delete_own_account() to app_rls;
+grant execute on function update_own_profile(text, text, text, date, text) to app_rls;
 
 revoke all on function consume_rate_limit(text, integer, interval) from public;
 revoke all on function assert_slot_available(uuid, uuid, uuid, timestamptz, uuid) from public;
@@ -2153,6 +2222,7 @@ revoke all on function issue_password_reset(text, text) from public;
 revoke all on function consume_password_reset(text, text) from public;
 revoke all on function enqueue_reminders() from public;
 revoke all on function protect_profile() from public;
+revoke all on function update_own_profile(text, text, text, date, text) from public;
 revoke all on function protect_professional() from public;
 revoke all on function protect_last_admin() from public;
 revoke all on function appointments_prevent_overlap() from public;
