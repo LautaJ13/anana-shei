@@ -27,7 +27,7 @@ export default async function HomePage({
     <div>
       <section className="bg-navy px-4 py-7 text-center sm:py-10">
         <h1 className="text-3xl font-semibold tracking-tight text-balance text-white sm:text-5xl">
-          Tu turno, sin vueltas.
+          Vos pones la pija, nosotros la chupamos
         </h1>
       </section>
       <Image
