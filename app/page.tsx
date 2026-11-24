@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { CalendarClock, MapPin, Search, ShieldCheck } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
@@ -23,16 +24,23 @@ export default async function HomePage({
   const filtering = Boolean(q || specialty || city);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <section className="rounded-3xl bg-navy px-5 py-8 text-white sm:px-8 sm:py-12">
-        <p className="text-sm font-semibold text-teal">Consultorios en Uruguay</p>
-        <h1 className="mt-2 max-w-2xl text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
-          Encontrá un turno con claridad.
+    <div>
+      <section className="bg-navy px-4 py-7 text-center sm:py-10">
+        <h1 className="text-3xl font-semibold tracking-tight text-balance text-white sm:text-5xl">
+          Tu turno, sin vueltas.
         </h1>
-        <p className="mt-4 max-w-2xl text-base leading-7 text-slate-200">
-          Buscá un consultorio o una especialidad, mirá solo los horarios que están libres y reservá en cuatro pasos.
-        </p>
-        <form className="mt-8 grid gap-3 rounded-2xl bg-white p-3 text-navy sm:grid-cols-[1.4fr_1fr_1fr_auto]" action="/" method="get">
+      </section>
+      <Image
+        src="/consulta.jpg"
+        alt="Un médico conversando con una paciente en el consultorio"
+        width={2172}
+        height={724}
+        sizes="100vw"
+        priority
+        className="block h-auto w-full"
+      />
+      <div className="mx-auto max-w-6xl px-4 py-8">
+        <form className="grid gap-3 rounded-2xl bg-white p-3 text-navy shadow-sm sm:grid-cols-[1.4fr_1fr_1fr_auto]" action="/" method="get">
           <label className="sr-only" htmlFor="q">Qué estás buscando</label>
           <Input id="q" name="q" defaultValue={q} placeholder="Especialidad, profesional o consultorio" />
           <label className="sr-only" htmlFor="especialidad">Especialidad</label>
@@ -49,7 +57,6 @@ export default async function HomePage({
           </datalist>
           <Button type="submit">Buscar</Button>
         </form>
-      </section>
 
       <section className="mt-8" aria-label="Especialidades disponibles">
         <div className="flex gap-2 overflow-x-auto pb-2">
@@ -109,6 +116,7 @@ export default async function HomePage({
         ))}
       </section>
       <p className="mt-6 flex items-center gap-2 text-sm text-muted"><MapPin className="h-4 w-4" aria-hidden="true" /> Pensado primero para Uruguay.</p>
+      </div>
     </div>
   );
 }
