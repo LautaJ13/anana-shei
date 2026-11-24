@@ -34,3 +34,63 @@ body {
   background: #49b8ad;
   color: #17324d;
 }
+
+button,
+a[class*="rounded-xl"],
+a[class*="rounded-lg"][class*="bg-"],
+a[class*="inline-flex"][class*="rounded-"] {
+  cursor: pointer;
+  transition: transform 180ms ease, background-color 180ms ease, color 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+button:hover:not(:disabled),
+a[class*="rounded-xl"]:hover,
+a[class*="rounded-lg"][class*="bg-"]:hover,
+a[class*="inline-flex"][class*="rounded-"]:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 18px rgb(23 50 77 / 16%);
+}
+
+button[class*="bg-white"]:hover:not(:disabled),
+a[class*="bg-white"]:hover,
+button[class*="hover:bg-background"]:hover:not(:disabled),
+a[class*="hover:bg-background"]:hover {
+  background-color: #49b8ad !important;
+  color: #17324d !important;
+  border-color: #49b8ad !important;
+}
+
+button[class*="bg-navy"]:hover:not(:disabled),
+a[class*="bg-navy"]:hover {
+  background-color: #ffffff !important;
+  color: #17324d !important;
+  border-color: #17324d !important;
+}
+
+button[class*="bg-teal"]:hover:not(:disabled),
+a[class*="bg-teal"]:hover {
+  background-color: #17324d !important;
+  color: #ffffff !important;
+  border-color: #17324d !important;
+}
+
+button[class*="bg-danger"]:hover:not(:disabled),
+a[class*="bg-danger"]:hover {
+  background-color: #ffffff !important;
+  color: #9f2d3a !important;
+  border-color: #9f2d3a !important;
+}
+
+button:not([class*="bg-"]):hover:not(:disabled) {
+  background-color: #49b8ad !important;
+  color: #17324d !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button:hover,
+  a[class*="rounded-xl"]:hover,
+  a[class*="rounded-lg"][class*="bg-"]:hover,
+  a[class*="inline-flex"][class*="rounded-"]:hover {
+    transform: none;
+  }
+}

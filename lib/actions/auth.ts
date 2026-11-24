@@ -9,12 +9,11 @@ import { appOrigin, safeNext } from "@/lib/http";
 import { endSession, startSession } from "@/lib/session";
 import { loginSchema, registerSchema, resetPasswordSchema, resetRequestSchema } from "@/lib/validators";
 
-export type AuthState = { ok: true; notice?: string } | { ok: false; error: string };
+export type AuthState = { ok: true; notice?: string; next?: string } | { ok: false; error: string };
 
 export async function loginAction(input: unknown, nextPath: string): Promise<AuthState> {
   const parsed = loginSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Revisá los datos." };
-  if (parsed.data.companyFax) return { ok: false, error: "No pudimos procesar el formulario." };
   try {
     const database = await getDatabase();
     const user = await authenticate(database, { email: parsed.data.email, password: parsed.data.password });
@@ -22,41 +21,34 @@ export async function loginAction(input: unknown, nextPath: string): Promise<Aut
   } catch (error) {
     return { ok: false, error: mapDbError(error) };
   }
-  redirect(safeNext(nextPath));
+  return { ok: true, next: safeNext(nextPath) };
 }
 
 export async function registerAction(input: unknown, nextPath: string): Promise<AuthState> {
   const parsed = registerSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Revisá los datos." };
-  if (parsed.data.companyFax) return { ok: false, error: "No pudimos procesar el formulario." };
   try {
     const database = await getDatabase();
     const email = parsed.data.email.trim().toLowerCase();
     await database.withService((query) =>
-      query.query(`select consume_rate_limit($1, 3, interval '1 hour')`, [`register-email:${email}`]),
+      query.query(`select consume_rate_limit($1, 20, interval '1 hour')`, [`register-email:${email}`]),
     );
     await database.withService((query) =>
-      query.query(`select consume_rate_limit('register-global', 40, interval '1 hour')`),
+      query.query(`select consume_rate_limit('register-global', 200, interval '1 hour')`),
     );
     const id = await registerAccount(database, parsed.data);
     if (!id) {
-      return {
-        ok: true,
-        notice: "Si el correo está libre, la cuenta quedó creada. Si ya la tenías, ingresá con tu clave.",
-      };
+      return { ok: false, error: "No pudimos crear la cuenta. Si ya te registraste, ingresá con tu clave." };
     }
     await startSession(id);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message.includes("email_taken")) {
-      return {
-        ok: true,
-        notice: "Si el correo está libre, la cuenta quedó creada. Si ya la tenías, ingresá con tu clave.",
-      };
+      return { ok: false, error: "No pudimos crear la cuenta. Si ya te registraste, ingresá con tu clave." };
     }
     return { ok: false, error: mapDbError(error) };
   }
-  redirect(safeNext(nextPath));
+  return { ok: true, next: safeNext(nextPath) };
 }
 
 export async function logoutAction(): Promise<void> {
@@ -67,7 +59,6 @@ export async function logoutAction(): Promise<void> {
 export async function requestResetAction(input: unknown): Promise<AuthState> {
   const parsed = resetRequestSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Revisá el correo." };
-  if (parsed.data.companyFax) return { ok: false, error: "No pudimos procesar el formulario." };
   const database = await getDatabase();
   try {
     const email = parsed.data.email.trim().toLowerCase();
@@ -108,5 +99,5 @@ export async function resetPasswordAction(input: unknown): Promise<AuthState> {
   const database = await getDatabase();
   const ok = await consumePasswordReset(database, parsed.data.token, parsed.data.password);
   if (!ok) return { ok: false, error: "El enlace no es válido o ya venció. Pedí uno nuevo." };
-  redirect("/ingresar?aviso=clave");
+  return { ok: true, next: "/ingresar?aviso=clave" };
 }

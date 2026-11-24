@@ -23,9 +23,18 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
       onSubmit={form.handleSubmit(async (values) => {
         setPending(true);
         setError(null);
-        const result = await loginAction(values, nextPath);
-        if (result && !result.ok) setError(result.error);
-        setPending(false);
+        try {
+          const result = await loginAction(values, nextPath);
+          if (!result.ok) {
+            setError(result.error);
+            return;
+          }
+          enter(result.next ?? nextPath);
+        } catch {
+          setError("No pudimos ingresar. Probá de nuevo.");
+        } finally {
+          setPending(false);
+        }
       })}
       noValidate
     >
@@ -60,10 +69,22 @@ export function RegisterForm({ nextPath }: { nextPath: string }) {
         setPending(true);
         setError(null);
         setMessage(null);
-        const result = await registerAction(values, nextPath);
-        if (result && !result.ok) setError(result.error);
-        if (result?.ok && result.notice) setMessage(result.notice);
-        setPending(false);
+        try {
+          const result = await registerAction(values, nextPath);
+          if (!result.ok) {
+            setError(result.error);
+            return;
+          }
+          if (result.next) {
+            enter(result.next);
+            return;
+          }
+          setMessage(result.notice ?? "La cuenta quedó creada.");
+        } catch {
+          setError("No pudimos crear la cuenta. Probá de nuevo.");
+        } finally {
+          setPending(false);
+        }
       })}
       noValidate
     >
@@ -133,9 +154,18 @@ export function ResetPasswordForm({ token }: { token: string }) {
       className="space-y-4"
       onSubmit={form.handleSubmit(async (values) => {
         setPending(true);
-        const result = await resetPasswordAction(values);
-        setPending(false);
-        if (result && !result.ok) setError(result.error);
+        try {
+          const result = await resetPasswordAction(values);
+          if (!result.ok) {
+            setError(result.error);
+            return;
+          }
+          enter(result.next ?? "/ingresar");
+        } catch {
+          setError("No pudimos guardar la contraseña. Probá de nuevo.");
+        } finally {
+          setPending(false);
+        }
       })}
       noValidate
     >
@@ -149,6 +179,11 @@ export function ResetPasswordForm({ token }: { token: string }) {
       </Button>
     </form>
   );
+}
+
+function enter(path: string) {
+  const next = path.startsWith("/") && !path.startsWith("//") && !path.includes("\\") ? path : "/cuenta";
+  window.location.assign(next);
 }
 
 function Field({ id, label, error, children }: { id: string; label: string; error?: string; children: React.ReactNode }) {
