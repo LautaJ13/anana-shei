@@ -19,6 +19,7 @@ export type SessionUser = {
   birthDate: string | null;
   platformRole: "user" | "superadmin";
   isDemo: boolean;
+  emailVerified: boolean;
   memberships: Membership[];
 };
 
@@ -30,6 +31,7 @@ type ProfileRow = {
   birth_date: string | null;
   platform_role: "user" | "superadmin";
   is_demo: boolean;
+  email_verified: boolean;
   password_hash?: string;
 };
 
@@ -52,14 +54,7 @@ export async function registerAccount(
 export async function registerOrResume(
   database: AppDatabase,
   input: { email: string; password: string; fullName: string; phone?: string | null },
-): Promise<string | null> {
-  try {
-    const created = await registerAccount(database, input);
-    if (created) return created;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "";
-    if (!message.includes("email_taken")) throw error;
-  }
+): Promise<{ id: string; created: boolean } | null> {
   const email = input.email.trim().toLowerCase();
   const found = await database.withService((db) =>
     db.query<{ id: string; password_hash: string; is_demo: boolean; status: string }>(
@@ -70,9 +65,26 @@ export async function registerOrResume(
     ),
   );
   const profile = found.rows[0];
-  if (!profile || profile.status !== "active" || (demoLoginsDisabled() && profile.is_demo)) return null;
-  if (!(await verifyPassword(input.password, profile.password_hash))) return null;
-  return profile.id;
+  if (profile) {
+    await database.withService((db) =>
+      db.query(`select consume_rate_limit($1, 8, interval '15 minutes')`, [`login-email:${email}`]),
+    );
+    await database.withService((db) =>
+      db.query(`select consume_rate_limit('login-global', 300, interval '15 minutes')`),
+    );
+    if (profile.status !== "active" || (demoLoginsDisabled() && profile.is_demo)) return null;
+    if (!(await verifyPassword(input.password, profile.password_hash))) return null;
+    return { id: profile.id, created: false };
+  }
+  await database.withService((db) =>
+    db.query(`select consume_rate_limit($1, 5, interval '1 hour')`, [`signup-email:${email}`]),
+  );
+  await database.withService((db) =>
+    db.query(`select consume_rate_limit('signup-global', 20, interval '1 hour')`),
+  );
+  const created = await registerAccount(database, input);
+  if (!created) return null;
+  return { id: created, created: true };
 }
 
 export async function authenticate(
@@ -115,6 +127,16 @@ export async function createSession(database: AppDatabase, userId: string): Prom
   return token;
 }
 
+export async function confirmEmailVerification(database: AppDatabase, token: string): Promise<boolean> {
+  const result = await database.withService((db) =>
+    db.query<{ confirm_email_verification: boolean }>(
+      `select confirm_email_verification($1) as confirm_email_verification`,
+      [sha256(token)],
+    ),
+  );
+  return Boolean(result.rows[0]?.confirm_email_verification);
+}
+
 export async function destroySession(database: AppDatabase, token: string): Promise<void> {
   await database.withService((db) => db.query(`delete from sessions where token_hash = $1`, [sha256(token)]));
 }
@@ -137,7 +159,8 @@ export async function readSession(database: AppDatabase, token: string | undefin
 
 async function sessionUser(query: Queryable, userId: string): Promise<SessionUser | null> {
   const profile = await query.query<ProfileRow>(
-    `select id, email, full_name, phone, birth_date::text as birth_date, platform_role, is_demo
+    `select id, email, full_name, phone, birth_date::text as birth_date, platform_role, is_demo,
+            (email_verified_at is not null) as email_verified
      from profiles where id = $1`,
     [userId],
   );
@@ -168,6 +191,7 @@ async function sessionUser(query: Queryable, userId: string): Promise<SessionUse
     birthDate: row.birth_date,
     platformRole: row.platform_role,
     isDemo: row.is_demo,
+    emailVerified: row.email_verified === true,
     memberships: memberships.rows.map((item) => ({
       organizationId: item.organization_id,
       organizationName: item.name,

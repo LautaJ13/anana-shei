@@ -213,7 +213,8 @@ test("reservas, concurrencia, aislamiento y zona horaria", async () => {
       password: "clave-segura-1",
       fullName: "Nueva Paciente",
     });
-    assert.equal(resumed, created);
+    assert.equal(resumed?.id, created);
+    assert.equal(resumed?.created, false);
     const rejected = await registerOrResume(db, {
       email: "nueva.paciente@example.com",
       password: "otra-clave-22",
@@ -383,6 +384,28 @@ test("reservas, concurrencia, aislamiento y zona horaria", async () => {
         [PRADO, spot.location_id, spot.professional_id, newPatient, spot.service_id],
       ),
     );
+    const erased = await registerAccount(db, {
+      email: "borrar.avisos@example.com",
+      password: "clave-segura-1",
+      fullName: "Borrar Avisos",
+    });
+    assert.ok(erased);
+    await db.withService((query) =>
+      query.query(
+        `insert into notification_events (user_id, kind, status, to_email, subject, payload)
+         values ($1::uuid, 'booking_confirmed', 'sent', 'borrar.avisos@example.com', 'Hola Borrar', '{"patientName":"Borrar Avisos"}'::jsonb)`,
+        [erased],
+      ),
+    );
+    await db.withUser(erased, (query) => query.query(`select delete_own_account()`));
+    const wiped = await db.withService((query) =>
+      query.query<{ to_email: string; payload: Record<string, unknown> }>(
+        `select to_email, payload from notification_events where user_id = $1::uuid`,
+        [erased],
+      ),
+    );
+    assert.match(wiped.rows[0]?.to_email ?? "", /@invalid\.alba$/);
+    assert.deepEqual(wiped.rows[0]?.payload, {});
   } finally {
     await db.close();
   }

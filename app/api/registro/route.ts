@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     telefono: String(form.get("phone") ?? "").trim(),
   };
   const site = request.headers.get("sec-fetch-site");
-  if (site && site !== "same-origin" && site !== "same-site" && site !== "none") {
+  if (site && site !== "same-origin" && site !== "none") {
     return failed(nextPath, "otra", fields);
   }
   const parsed = registerSchema.safeParse({
@@ -46,13 +46,15 @@ export async function POST(request: Request) {
   }
   try {
     const database = await getDatabase();
-    const id = await registerOrResume(database, parsed.data);
-    if (!id) return failed(nextPath, "existe", fields);
-    const token = await createSession(database, id);
+    const result = await registerOrResume(database, parsed.data);
+    if (!result) return failed(nextPath, "otra", fields);
+    const token = await createSession(database, result.id);
     const forwarded = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
     const secure = forwarded ? forwarded === "https" : new URL(request.url).protocol === "https:" || process.env.NODE_ENV === "production";
     return redirectTo(nextPath, token, secure);
   } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("rate_limited")) return failed(nextPath, "limite", fields);
     console.error(error);
     return failed(nextPath, "otra", fields);
   }

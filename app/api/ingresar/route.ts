@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     return redirectTo(`/ingresar?${params.toString()}`);
   };
   const site = request.headers.get("sec-fetch-site");
-  if (site && site !== "same-origin" && site !== "same-site" && site !== "none") return back("otra");
+  if (site && site !== "same-origin" && site !== "none") return back("otra");
   const parsed = loginSchema.safeParse({ email, password: String(form.get("password") ?? "") });
   if (!parsed.success) return back(parsed.error.issues[0]?.path[0] === "email" ? "correo" : "datos");
   try {

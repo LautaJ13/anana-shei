@@ -3,10 +3,10 @@
 import { redirect } from "next/navigation";
 import { authenticate, consumePasswordReset, issuePasswordReset, registerOrResume } from "@/lib/auth";
 import { getDatabase } from "@/lib/db";
-import { deliverPasswordReset, isEmailConfigured } from "@/lib/email";
+import { deliverPasswordReset, isEmailConfigured, requestEmailVerification } from "@/lib/email";
 import { mapDbError } from "@/lib/errors";
 import { appOrigin, safeNext } from "@/lib/http";
-import { endSession, startSession } from "@/lib/session";
+import { endSession, getCurrentUser, startSession } from "@/lib/session";
 import { loginSchema, registerSchema, resetPasswordSchema, resetRequestSchema } from "@/lib/validators";
 
 export type AuthState = { ok: true; notice?: string; next?: string } | { ok: false; error: string };
@@ -29,15 +29,28 @@ export async function registerAction(input: unknown, nextPath: string): Promise<
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Revisá los datos." };
   try {
     const database = await getDatabase();
-    const id = await registerOrResume(database, parsed.data);
-    if (!id) {
-      return { ok: false, error: "Ese correo ya tiene una cuenta y la contraseña no coincide. Ingresá con tu clave o usá otro correo." };
+    const result = await registerOrResume(database, parsed.data);
+    if (!result) {
+      return { ok: false, error: "No pudimos crear la cuenta. Si ya te registraste, ingresá con tu clave." };
     }
-    await startSession(id);
+    await startSession(result.id);
   } catch (error) {
     return { ok: false, error: mapDbError(error) };
   }
   return { ok: true, next: safeNext(nextPath) };
+}
+
+export async function sendVerificationAction(): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user || user.emailVerified) redirect("/cuenta");
+  const database = await getDatabase();
+  let sent = false;
+  try {
+    sent = await requestEmailVerification(database, user.id, user.email);
+  } catch {
+    sent = false;
+  }
+  redirect(sent ? "/cuenta?aviso=Te enviamos un enlace para confirmar el correo." : "/cuenta?aviso=No pudimos enviar el enlace. Probá más tarde.");
 }
 
 export async function logoutAction(): Promise<void> {

@@ -10,8 +10,8 @@ const ERROR_TEXT: Record<string, string> = {
   clave: "La contraseña tiene que tener al menos 8 caracteres.",
   telefono: "El teléfono es demasiado largo.",
   datos: "Revisá los datos e intentá de nuevo.",
-  existe: "Ese correo ya tiene una cuenta y la contraseña no coincide. Ingresá con tu clave o usá otro correo.",
-  otra: "No pudimos crear la cuenta. Volvé a intentar.",
+  limite: "Hubo demasiados intentos. Esperá un rato y probá de nuevo.",
+  otra: "No pudimos crear la cuenta. Si ya te registraste, ingresá con tu clave.",
 };
 
 export default async function RegisterPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

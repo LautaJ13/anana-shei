@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@electric-sql/pglite"],
   experimental: {
     serverActions: {
-      allowedOrigins: ["alba.apps.grok.bot", "*.apps.grok.bot"],
+      allowedOrigins: ["alba.apps.grok.bot"],
     },
   },
   async headers() {

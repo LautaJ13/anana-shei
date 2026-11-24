@@ -1,4 +1,6 @@
 import type { AppDatabase } from "./db";
+import { appOrigin } from "./http";
+import { newToken, sha256 } from "./password";
 import { formatDateTime } from "./time";
 
 export type EmailStatus = "sent" | "failed" | "skipped_unconfigured" | "pending";
@@ -20,6 +22,7 @@ type NotificationRow = {
   status: EmailStatus;
   to_email: string;
   organization_id: string | null;
+  user_id: string | null;
   subject: string;
   payload: {
     startsAt?: string;
@@ -50,7 +53,7 @@ function bookingHtml(event: NotificationRow): string {
     ? formatDateTime(payload.startsAt, payload.timezone || "America/Montevideo")
     : "Horario a confirmar";
   const lines = [
-    payload.patientName ? `Hola ${payload.patientName}.` : "Hola.",
+    "Hola.",
     event.kind === "booking_cancelled"
       ? "Tu consulta fue cancelada."
       : event.kind === "booking_rescheduled"
@@ -108,7 +111,7 @@ async function mark(database: AppDatabase, id: string, status: EmailStatus, erro
 export async function deliverNotification(database: AppDatabase, id: string): Promise<EmailStatus> {
   const rows = await database.withService((query) =>
     query.query<NotificationRow>(
-      `select id, kind, status, to_email, organization_id, subject, payload from notification_events where id = $1::uuid`,
+      `select id, kind, status, to_email, organization_id, user_id, subject, payload from notification_events where id = $1::uuid`,
       [id],
     ),
   );
@@ -124,6 +127,18 @@ export async function deliverNotification(database: AppDatabase, id: string): Pr
     await mark(database, event.id, "failed", "not_deliverable");
     return "failed";
   }
+  if (isEmailConfigured() && event.kind !== "password_reset" && event.user_id) {
+    const owner = await database.withService((query) =>
+      query.query<{ verified: boolean }>(
+        `select email_verified_at is not null as verified from profiles where id = $1::uuid`,
+        [event.user_id],
+      ),
+    );
+    if (!owner.rows[0]?.verified) {
+      await mark(database, event.id, "failed", "email_unverified");
+      return "failed";
+    }
+  }
   if (event.organization_id) {
     const org = await database.withService((query) =>
       query.query<{ status: string }>(`select status from organizations where id = $1::uuid`, [event.organization_id]),
@@ -132,6 +147,14 @@ export async function deliverNotification(database: AppDatabase, id: string): Pr
       await mark(database, event.id, "failed", "organization_not_active");
       return "failed";
     }
+  }
+  try {
+    await database.withService((query) =>
+      query.query(`select consume_rate_limit('outbound-mail', 40, interval '1 hour')`),
+    );
+  } catch {
+    await mark(database, event.id, "failed", "rate_limited");
+    return "failed";
   }
   const result = await sendEmail({ to: recipient, subject: event.subject, html: bookingHtml(event) });
   if (result.ok) {
@@ -165,6 +188,14 @@ export async function deliverPasswordReset(
     await mark(database, id, "skipped_unconfigured", "Proveedor de correo no configurado");
     return "skipped_unconfigured";
   }
+  try {
+    await database.withService((query) =>
+      query.query(`select consume_rate_limit('outbound-mail', 40, interval '1 hour')`),
+    );
+  } catch {
+    await mark(database, id, "failed", "rate_limited");
+    return "failed";
+  }
   const result = await sendEmail({
     to: email,
     subject: "Recuperar acceso a Alba",
@@ -176,4 +207,30 @@ export async function deliverPasswordReset(
   }
   await mark(database, id, "failed", result.error);
   return "failed";
+}
+
+export async function requestEmailVerification(database: AppDatabase, userId: string, email: string): Promise<boolean> {
+  if (!isEmailConfigured()) return false;
+  const origin = await appOrigin();
+  if (!origin) return false;
+  await database.withService((query) =>
+    query.query(`select consume_rate_limit($1, 3, interval '1 hour')`, [`verify-email:${userId}`]),
+  );
+  await database.withService((query) =>
+    query.query(`select consume_rate_limit('verify-email-global', 30, interval '1 hour')`),
+  );
+  await database.withService((query) =>
+    query.query(`select consume_rate_limit('outbound-mail', 40, interval '1 hour')`),
+  );
+  const token = newToken();
+  await database.withService((query) =>
+    query.query(`select issue_email_verification($1::uuid, $2)`, [userId, sha256(token)]),
+  );
+  const link = `${origin}/verificar?token=${encodeURIComponent(token)}`;
+  const result = await sendEmail({
+    to: email,
+    subject: "Confirmá tu correo en Alba",
+    html: `<div style="font-family:Inter,Arial,sans-serif;color:#334155"><p>Para recibir los avisos de tus turnos, confirmá este correo.</p><p><a href="${escapeHtml(link)}">${escapeHtml(link)}</a></p><p>Si no creaste una cuenta en Alba, podés ignorar el mensaje.</p></div>`,
+  });
+  return result.ok;
 }

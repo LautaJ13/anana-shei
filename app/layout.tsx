@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { Toaster } from "sonner";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { sendVerificationAction } from "@/lib/actions/auth";
 import { isEmailConfigured } from "@/lib/email";
 import { getCurrentUser } from "@/lib/session";
 import "./globals.css";
@@ -25,6 +26,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           Saltar al contenido
         </a>
         <SiteHeader user={user} />
+        {user && isEmailConfigured() && !user.emailVerified ? (
+          <form action={sendVerificationAction} className="bg-teal px-4 py-2 text-center text-sm text-navy">
+            Confirmá tu correo para recibir los avisos de tus turnos.
+            <button className="ml-2 font-semibold underline" type="submit">Enviar enlace</button>
+          </form>
+        ) : null}
         {isEmailConfigured() ? null : (
           <p className="bg-navy px-4 py-2 text-center text-sm text-white">
             Modo desarrollo: el correo no está configurado. Las reservas se confirman igual y el aviso queda registrado, pero no se envía un email.

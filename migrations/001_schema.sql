@@ -1743,6 +1743,12 @@ begin
     raise exception 'forbidden';
   end if;
   perform set_config('app.allow_account_erasure', 'on', true);
+  update notification_events
+  set to_email = 'deleted+' || v_user::text || '@invalid.alba',
+      subject = 'Aviso',
+      payload = '{}'::jsonb
+  where user_id = v_user
+     or lower(to_email) = (select lower(email) from profiles where id = v_user);
   update appointments
   set status = 'cancelled',
       cancellation_reason = 'Cuenta eliminada',
